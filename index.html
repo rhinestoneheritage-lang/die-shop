@@ -1,0 +1,1625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1C2228">
+<title>DieTrack</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap">
+<style>
+  /* Layout: sticky steel header and scrolling tab bar over one column of record cards on phones; two-column dashboard on wide screens. */
+  :root{
+    --bg:#ECEFF1;
+    --surface:#FFFFFF;
+    --surface-alt:#F5F7F8;
+    --border:#D6DBDF;
+    --ink:#1C2228;
+    --ink-soft:#5A636B;
+    --ink-faint:#868F96;
+    --accent:#C9531A;
+    --accent-dark:#A3410F;
+    --accent-bg:#FBE7DB;
+    --on-accent:#FFFFFF;
+    --steel:#2F5870;
+    --steel-bg:#E2EBF0;
+    --green:#237A4B;
+    --green-bg:#E0F1E8;
+    --amber:#8F6208;
+    --amber-bg:#FAEFD2;
+    --red:#A83232;
+    --red-bg:#F8E4E4;
+    --gray:#6F6C5E;
+    --gray-bg:#E8E8E2;
+    --header-bg:#1C2228;
+    --header-fg:#FFFFFF;
+    --header-soft:#AEB6BD;
+    --toast-bg:#1C2228;
+    --toast-fg:#FFFFFF;
+    --plate-hi:rgba(255,255,255,.55);
+    --plate-lo:rgba(0,0,0,.07);
+    --overlay:rgba(14,16,18,.55);
+    --shadow-sm:0 1px 2px rgba(20,26,32,.08);
+    --shadow-md:0 8px 24px rgba(20,26,32,.16);
+    --font-body:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --font-display:'Oswald','Arial Narrow',Impact,sans-serif;
+    --radius:5px;
+    --header-h:60px;
+    --tabs-h:48px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#14171A;
+      --surface:#1C2024;
+      --surface-alt:#22272C;
+      --border:#323941;
+      --ink:#E8ECEF;
+      --ink-soft:#A1A9B0;
+      --ink-faint:#6E777E;
+      --accent:#E8793F;
+      --accent-dark:#F29463;
+      --accent-bg:#3A2418;
+      --on-accent:#1A0F08;
+      --steel:#86B0C9;
+      --steel-bg:#1E2F3A;
+      --green:#62C48F;
+      --green-bg:#1B2F25;
+      --amber:#E3B556;
+      --amber-bg:#352A10;
+      --red:#EE8686;
+      --red-bg:#3A2020;
+      --gray:#ABA895;
+      --gray-bg:#2D2D27;
+      --header-bg:#0E1012;
+      --header-fg:#FFFFFF;
+      --header-soft:#9AA3AA;
+      --toast-bg:#E8ECEF;
+      --toast-fg:#14171A;
+      --plate-hi:rgba(255,255,255,.07);
+      --plate-lo:rgba(0,0,0,.25);
+      --overlay:rgba(0,0,0,.65);
+      --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+      --shadow-md:0 8px 24px rgba(0,0,0,.5);
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#14171A;
+    --surface:#1C2024;
+    --surface-alt:#22272C;
+    --border:#323941;
+    --ink:#E8ECEF;
+    --ink-soft:#A1A9B0;
+    --ink-faint:#6E777E;
+    --accent:#E8793F;
+    --accent-dark:#F29463;
+    --accent-bg:#3A2418;
+    --on-accent:#1A0F08;
+    --steel:#86B0C9;
+    --steel-bg:#1E2F3A;
+    --green:#62C48F;
+    --green-bg:#1B2F25;
+    --amber:#E3B556;
+    --amber-bg:#352A10;
+    --red:#EE8686;
+    --red-bg:#3A2020;
+    --gray:#ABA895;
+    --gray-bg:#2D2D27;
+    --header-bg:#0E1012;
+    --header-fg:#FFFFFF;
+    --header-soft:#9AA3AA;
+    --toast-bg:#E8ECEF;
+    --toast-fg:#14171A;
+    --plate-hi:rgba(255,255,255,.07);
+    --plate-lo:rgba(0,0,0,.25);
+    --overlay:rgba(0,0,0,.65);
+    --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+    --shadow-md:0 8px 24px rgba(0,0,0,.5);
+    color-scheme:dark;
+  }
+
+  *{box-sizing:border-box;}
+  html{-webkit-text-size-adjust:100%;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:14px;-webkit-font-smoothing:antialiased;}
+  body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--header-bg);}
+  button,input,select,textarea{font-family:var(--font-body);font-size:16px;color:inherit;}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+  /* ---------- Header ---------- */
+  header.app-header{background:var(--header-bg);color:var(--header-fg);height:var(--header-h);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:env(safe-area-inset-top,0px);z-index:30;box-shadow:var(--shadow-md);}
+  .brand{display:flex;align-items:center;gap:9px;min-width:0;}
+  .brand-mark{width:32px;height:32px;border-radius:4px;background:linear-gradient(145deg,#D4601F,#9C4313);display:flex;align-items:center;justify-content:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.25), inset 0 -2px 3px rgba(0,0,0,.35);flex-shrink:0;}
+  .brand-mark svg{width:17px;height:17px;}
+  .brand-text{min-width:0;}
+  .brand-text .name{font-family:var(--font-display);font-size:18px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;line-height:1;white-space:nowrap;}
+  .brand-text .tag{font-size:10.5px;color:var(--header-soft);letter-spacing:.02em;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .today-pill{font-size:11.5px;font-weight:600;color:var(--header-fg);background:rgba(255,255,255,.1);padding:5px 10px;border-radius:20px;white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums;}
+
+  /* ---------- Nav tabs ---------- */
+  nav.tabs{display:flex;gap:2px;overflow-x:auto;background:var(--surface);border-bottom:1px solid var(--border);padding-left:max(4px,env(safe-area-inset-left,0px));padding-right:max(4px,env(safe-area-inset-right,0px));position:sticky;top:calc(var(--header-h) + env(safe-area-inset-top,0px));z-index:25;scrollbar-width:none;height:var(--tabs-h);align-items:stretch;}
+  nav.tabs::-webkit-scrollbar{display:none;}
+  .tab-btn{display:flex;align-items:center;gap:6px;padding:0 12px;background:none;border:none;cursor:pointer;font-size:13px;font-weight:600;color:var(--ink-soft);white-space:nowrap;border-bottom:2.5px solid transparent;transition:color .15s, border-color .15s;flex-shrink:0;}
+  .tab-btn svg{width:16px;height:16px;flex-shrink:0;}
+  .tab-btn:hover{color:var(--ink);}
+  .tab-btn.active{color:var(--accent-dark);border-bottom-color:var(--accent);}
+
+  main{max-width:1180px;margin:0 auto;padding-top:16px;padding-bottom:90px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));}
+  .section{display:none;}
+  .section.active{display:block;animation:fadein .2s ease;}
+  @keyframes fadein{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
+  @media (prefers-reduced-motion: reduce){.section.active{animation:none;}}
+
+  .status{padding:10px 12px;border:1px solid var(--border);background:var(--amber-bg);color:var(--amber);border-radius:var(--radius);margin-bottom:14px;font-size:13px;font-weight:500;}
+
+  .section-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;}
+  .section-title{font-family:var(--font-display);font-size:19px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;}
+  .section-sub{font-size:12.5px;color:var(--ink-soft);margin-top:2px;text-transform:none;letter-spacing:0;font-family:var(--font-body);}
+
+  /* ---------- Buttons ---------- */
+  .btn{font-weight:600;font-size:13.5px;padding:10px 16px;border-radius:var(--radius);border:1px solid transparent;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:filter .15s, background .15s;min-height:40px;}
+  .btn svg{width:15px;height:15px;}
+  .btn-primary{background:var(--accent);color:var(--on-accent);}
+  .btn-primary:hover{filter:brightness(1.07);}
+  .btn-primary:disabled{opacity:.45;cursor:not-allowed;}
+  .btn-ghost{background:var(--surface);color:var(--ink);border-color:var(--border);}
+  .btn-ghost:hover{background:var(--surface-alt);}
+  .icon-btn{background:none;border:none;cursor:pointer;color:var(--ink-soft);padding:8px;border-radius:4px;display:inline-flex;min-width:36px;min-height:36px;align-items:center;justify-content:center;}
+  .icon-btn:hover{background:var(--surface-alt);color:var(--ink);}
+  .icon-btn svg{width:16px;height:16px;}
+
+  /* ---------- Dashboard plates ---------- */
+  .plate-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:10px;margin-bottom:18px;}
+  .stat-plate{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:13px 14px;position:relative;box-shadow:var(--shadow-sm);min-width:0;}
+  .stat-plate::before,.stat-plate::after{content:"";position:absolute;width:5px;height:5px;border-radius:50%;background:var(--border);top:7px;}
+  .stat-plate::before{left:7px;}
+  .stat-plate::after{right:7px;}
+  .stat-plate .num{font-family:var(--font-display);font-size:25px;font-weight:700;line-height:1;color:var(--ink);word-break:break-word;font-variant-numeric:tabular-nums;}
+  .stat-plate .lbl{font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-top:6px;font-weight:600;}
+  .stat-plate.accent .num{color:var(--accent-dark);}
+  .plate-grid-sub{margin-top:-6px;margin-bottom:18px;}
+  .group-label{font-family:var(--font-display);font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);margin:0 0 8px;}
+
+  .dash-grid{display:grid;grid-template-columns:1.3fr 1fr;gap:14px;}
+  .dash-grid>*{min-width:0;}
+  @media (max-width:760px){.dash-grid{grid-template-columns:1fr;}}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:15px;box-shadow:var(--shadow-sm);}
+  .card h3{margin:0 0 12px;font-family:var(--font-display);font-size:13.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink);font-weight:600;}
+  .bar-row{display:flex;align-items:center;gap:8px;margin-bottom:9px;font-size:12.5px;}
+  .bar-row .blabel{width:84px;flex-shrink:0;color:var(--ink-soft);font-weight:600;}
+  .bar-track{flex:1;background:var(--surface-alt);border-radius:3px;height:9px;overflow:hidden;border:1px solid var(--border);}
+  .bar-fill{height:100%;border-radius:3px;}
+  .bar-count{width:20px;text-align:right;font-weight:700;flex-shrink:0;font-variant-numeric:tabular-nums;}
+  .empty-mini{color:var(--ink-faint);font-size:12.5px;padding:10px 0;}
+  .mini-list{list-style:none;margin:0;padding:0;}
+  .mini-list li{padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px;display:flex;justify-content:space-between;gap:8px;}
+  .mini-list li:last-child{border-bottom:none;}
+  .mini-list .mtitle{font-weight:600;color:var(--ink);min-width:0;overflow-wrap:anywhere;}
+  .mini-list .msub{color:var(--ink-soft);font-size:11.5px;text-align:right;flex-shrink:0;max-width:50%;overflow-wrap:anywhere;}
+  .mini-list .overdue{color:var(--red);font-weight:700;}
+  .activity-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+  .activity-grid>*{min-width:0;}
+  @media (max-width:680px){.activity-grid{grid-template-columns:1fr;}}
+
+  /* ---------- Toolbar / search ---------- */
+  .toolbar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;}
+  .search-input{flex:1;min-width:140px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:16px;background:var(--surface);color:var(--ink);}
+  .search-input:focus{outline:none;border-color:var(--accent);}
+  select.filter-select, input.date-filter{padding:10px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:16px;background:var(--surface);color:var(--ink);}
+  .chip-btn{padding:9px 12px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);font-size:12.5px;font-weight:600;cursor:pointer;color:var(--ink-soft);white-space:nowrap;}
+  .chip-btn.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent-dark);}
+
+  /* ---------- Record cards ---------- */
+  .data-list{display:flex;flex-direction:column;gap:8px;}
+  .row-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 13px;box-shadow:var(--shadow-sm);}
+  .row-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+  .row-top>div:first-child{min-width:0;}
+  .row-title{font-weight:700;font-size:14px;color:var(--ink);overflow-wrap:anywhere;}
+  .row-sub{font-size:12.5px;color:var(--ink-soft);margin-top:2px;overflow-wrap:anywhere;}
+  .row-meta{display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:9px;font-size:12.5px;color:var(--ink-soft);overflow-wrap:anywhere;}
+  .row-meta b{color:var(--ink);font-weight:600;}
+  .row-meta .overdue{color:var(--red);}
+  .row-actions{display:flex;gap:0;flex-shrink:0;}
+
+  /* ---------- Stamped status plate ---------- */
+  .plate{display:inline-flex;align-items:center;font-family:var(--font-display);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:4px 8px 4px 7px;border-radius:3px;box-shadow:inset 0 1px 0 var(--plate-hi), inset 0 -1px 1px var(--plate-lo);white-space:nowrap;}
+  .plate.green{background:var(--green-bg);color:var(--green);}
+  .plate.amber{background:var(--amber-bg);color:var(--amber);}
+  .plate.red{background:var(--red-bg);color:var(--red);}
+  .plate.steel{background:var(--steel-bg);color:var(--steel);}
+  .plate.gray{background:var(--gray-bg);color:var(--gray);}
+
+  /* ---------- Empty state ---------- */
+  .empty-state{text-align:center;padding:40px 18px;color:var(--ink-soft);}
+  .empty-state svg{width:34px;height:34px;color:var(--ink-faint);margin-bottom:10px;}
+  .empty-state .et{font-weight:700;color:var(--ink);font-size:14.5px;margin-bottom:4px;}
+  .empty-state .es{font-size:13px;margin-bottom:16px;}
+
+  /* ---------- Modal ---------- */
+  .overlay{position:fixed;inset:0;background:var(--overlay);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);overflow-y:auto;}
+  .overlay.open{display:flex;}
+  .modal{background:var(--surface);color:var(--ink);border-radius:0;max-width:480px;width:100%;box-shadow:var(--shadow-md);margin:0;min-height:100%;}
+  @media (min-width:560px){
+    .overlay{padding:calc(24px + env(safe-area-inset-top,0px)) calc(14px + env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) calc(14px + env(safe-area-inset-left,0px));}
+    .modal{border-radius:8px;margin-top:10px;min-height:0;}
+  }
+  .modal-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:2;}
+  .modal-head h3{margin:0;font-family:var(--font-display);font-size:15px;text-transform:uppercase;letter-spacing:.03em;}
+  .modal-body{padding:16px;display:flex;flex-direction:column;gap:12px;}
+  .modal-foot{padding:14px 16px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;position:sticky;bottom:0;background:var(--surface);}
+  .field label{display:block;font-size:11.5px;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em;margin-bottom:5px;}
+  .field input, .field select, .field textarea{width:100%;padding:10px 11px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-alt);color:var(--ink);}
+  .field input:focus, .field select:focus, .field textarea:focus{outline:none;border-color:var(--accent);background:var(--surface);}
+  .field textarea{resize:vertical;min-height:54px;}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .field-row>*{min-width:0;}
+  @media (max-width:420px){.field-row{grid-template-columns:1fr;}}
+  .checkline{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-soft);}
+  .checkline input{width:auto;}
+
+  /* ---------- Toast ---------- */
+  #toast{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%) translateY(20px);background:var(--toast-bg);color:var(--toast-fg);padding:10px 18px;border-radius:6px;font-size:13px;font-weight:600;box-shadow:var(--shadow-md);opacity:0;transition:opacity .2s, transform .2s;z-index:60;pointer-events:none;max-width:90vw;text-align:center;}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  #toast.err{background:var(--red);color:#fff;}
+
+  ::selection{background:var(--accent-bg);}
+
+  @media (max-width:380px){
+    .brand-text .tag{display:none;}
+    .today-pill{display:none;}
+  }
+
+  /* ---------- Login / account / team (standalone) ---------- */
+  body:not(.authed) header.app-header, body:not(.authed) nav.tabs, body:not(.authed) main{display:none;}
+  body.authed #login{display:none;}
+  #login{min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;background:var(--header-bg);padding:24px max(16px,env(safe-area-inset-right,0px)) 24px max(16px,env(safe-area-inset-left,0px));}
+  .login-card{background:var(--surface);color:var(--ink);width:100%;max-width:380px;border-radius:8px;padding:26px 22px;box-shadow:var(--shadow-md);}
+  .login-card .brand{margin-bottom:6px;}
+  .login-card .brand-text .name{font-size:22px;color:var(--ink);}
+  .login-card .brand-text .tag{color:var(--ink-soft);}
+  .login-card form{display:flex;flex-direction:column;gap:12px;margin-top:18px;}
+  .login-err{background:var(--red-bg);color:var(--red);padding:9px 11px;border-radius:var(--radius);font-size:13px;font-weight:500;}
+  .login-hint{font-size:12px;color:var(--ink-faint);margin-top:14px;line-height:1.5;}
+  .user-btn{background:rgba(255,255,255,.1);color:var(--header-fg);border:none;border-radius:20px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;min-height:30px;}
+  .user-btn:hover{background:rgba(255,255,255,.18);}
+  .header-right{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+  .byline{margin-top:7px;font-size:11px;color:var(--ink-faint);}
+  .btn-sm{min-height:34px;padding:6px 12px;font-size:12.5px;}
+  .btn-danger{background:var(--red-bg);color:var(--red);border-color:transparent;}
+  .team-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;}
+  .acct-actions{display:flex;flex-direction:column;gap:8px;}
+  .acct-actions .btn{justify-content:center;}
+
+</style>
+</head>
+<body>
+<div id="login">
+  <div class="login-card">
+    <div class="brand">
+      <div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M9 4v16M4 9h16"/></svg></div>
+      <div class="brand-text"><div class="name">DieTrack</div><div class="tag">Die Shop Management</div></div>
+    </div>
+    <form id="loginForm" autocomplete="on">
+      <div class="login-err" id="loginErr" hidden></div>
+      <div class="field"><label for="lg_user">Username</label><input id="lg_user" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required></div>
+      <div class="field"><label for="lg_pass">Password</label><input id="lg_pass" name="password" type="password" autocomplete="current-password" required></div>
+      <button class="btn btn-primary" id="lg_btn" type="submit" style="justify-content:center;">Log in</button>
+    </form>
+    <div class="login-hint">Username aur password shop owner se lein. Naya account sirf owner bana sakta hai.</div>
+  </div>
+</div>
+
+<header class="app-header">
+  <div class="brand">
+    <div class="brand-mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M9 4v16M4 9h16"/></svg>
+    </div>
+    <div class="brand-text">
+      <div class="name">DieTrack</div>
+      <div class="tag">Tool &amp; Die Shop Management</div>
+    </div>
+  </div>
+  <div class="header-right"><div class="today-pill" id="todayPill"></div><button class="user-btn" id="userBtn" onclick="openAccount()" aria-label="Account"></button></div>
+</header>
+
+<nav class="tabs" id="tabs"></nav>
+
+<main>
+  <div class="status" id="statusBar" hidden></div>
+  <section class="section" id="sec-dashboard"></section>
+  <section class="section" id="sec-dies"></section>
+  <section class="section" id="sec-orders"></section>
+  <section class="section" id="sec-cutting"></section>
+  <section class="section" id="sec-designs"></section>
+  <section class="section" id="sec-payments"></section>
+  <section class="section" id="sec-customers"></section>
+  <section class="section" id="sec-maintenance"></section>
+  <section class="section" id="sec-team"></section>
+</main>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="modalTitle">Add</h3>
+      <button class="icon-btn" onclick="closeModal()" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="modalSaveBtn" onclick="handleSave()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+/* ===================== ICONS ===================== */
+const ICON = {
+  dashboard:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>`,
+  dies:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M9 4v16M4 9h16"/></svg>`,
+  orders:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="1"/><path d="M9 3v3h6V3M9 11h6M9 15h4"/></svg>`,
+  customers:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="8" r="2.4"/><path d="M16 14.2c2.4.5 4 2.5 4 5.3"/></svg>`,
+  maintenance:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 1-5.4 5.4L4 17v3h3l5.3-5.3a4 4 0 0 1 5.4-5.4l-2.2 2.2-2-2 2.2-2.2Z"/></svg>`,
+  cutting:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.6"/><circle cx="6" cy="18" r="2.6"/><path d="M19.5 4.5 8.3 13.5M14.2 14.3l5.3 5.2M8.3 10.5l1.8 1.5"/></svg>`,
+  design:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="M14.5 5.5 18.5 9.5"/></svg>`,
+  payments:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><text x="12" y="16.3" font-size="11" text-anchor="middle" stroke="none" fill="currentColor" font-family="Arial,sans-serif" font-weight="700">₹</text></svg>`,
+  plus:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
+  edit:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
+  trash:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>`,
+  box:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8M12 13v8"/></svg>`
+};
+
+/* ===================== STATE ===================== */
+let DIES=[], CUSTOMERS=[], ORDERS=[], MAINT=[], CUTTING=[], DESIGNS=[], PAYMENTS=[];
+let activeTab='dashboard';
+try{ const t=localStorage.getItem('dietrack:tab'); if(t) activeTab=t; }catch(e){}
+
+const TABS=[
+  {id:'dashboard',label:'Dashboard',icon:'dashboard'},
+  {id:'dies',label:'Dies',icon:'dies'},
+  {id:'orders',label:'Orders',icon:'orders'},
+  {id:'cutting',label:'Cutting Log',icon:'cutting'},
+  {id:'designs',label:'Designs',icon:'design'},
+  {id:'payments',label:'Payments',icon:'payments'},
+  {id:'customers',label:'Customers',icon:'customers'},
+  {id:'maintenance',label:'Maintenance',icon:'maintenance'},
+  {id:'team',label:'Team',icon:'customers'},
+];
+if(!TABS.some(t=>t.id===activeTab)) activeTab='dashboard';
+
+const DIE_TYPES=['Press Die','Mould / Mold','Cutting Die','Forming Die','Stamping Die','Other'];
+const DIE_STATUSES=[
+  {v:'Available',c:'green'},{v:'In Use',c:'steel'},{v:'Maintenance',c:'red'},{v:'Retired',c:'gray'}
+];
+const ORDER_STATUSES=[
+  {v:'Pending',c:'amber'},{v:'In Production',c:'steel'},{v:'Completed',c:'green'},{v:'Delivered',c:'gray'}
+];
+const PAY_MODES=['Cash','Bank Transfer','UPI','Cheque','Other'];
+
+function plateFor(value,list){
+  const m=list.find(x=>x.v===value)||{c:'gray'};
+  return `<span class="plate ${m.c}">${esc(value||'—')}</span>`;
+}
+function esc(s){return (s===undefined||s===null)?'':String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function uid(p){return p+'-'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+function pad2(n){return String(n).padStart(2,'0');}
+/* Local calendar date (not UTC), so entries made after midnight land on the right day. */
+function todayISO(){const d=new Date();return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());}
+function fmtDate(d){if(!d)return '—';const dt=new Date(d+'T00:00:00');if(isNaN(dt))return d;return dt.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});}
+function fmtDateShort(d){if(!d)return '—';const dt=new Date(d+'T00:00:00');if(isNaN(dt))return d;return dt.toLocaleDateString('en-IN',{day:'2-digit',month:'short'});}
+function fmtMoney(n){n=Number(n)||0;return '₹'+n.toLocaleString('en-IN');}
+function uniqueVals(list,key){return [...new Set(list.map(x=>x[key]).filter(Boolean))].sort();}
+
+/* Re-render while keeping the cursor in whichever search box the person is typing in. */
+function rr(fn){
+  const a=document.activeElement;
+  const id=a&&a.id;
+  let s=null,e=null;
+  try{ if(a&&typeof a.selectionStart==='number'){s=a.selectionStart;e=a.selectionEnd;} }catch(_){}
+  fn();
+  if(id){
+    const n=document.getElementById(id);
+    if(n&&n!==a){ n.focus(); if(s!==null){try{n.setSelectionRange(s,e);}catch(_){}} }
+  }
+}
+
+
+/* ===================== SUPABASE STORAGE =====================
+   Table dieshop_records(collection,id,data jsonb). Row-level security allows
+   only active die shop members. Everyone sees changes live via Realtime. */
+const SB_URL='https://rsgioitxwijedffrjito.supabase.co';
+const SB_KEY='sb_publishable_Le2efyGVTixAxEtJF8tK-w_GwncPKy5';
+const MAIL_DOMAIN='dieshop.rhstockandbill.in';
+const sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,storageKey:'dietrack-auth'}});
+const COLS=['dies','customers','orders','maintenance','cutting','designs','payments'];
+const FORM_COL={Die:'dies',Customer:'customers',Order:'orders',Maint:'maintenance',Cutting:'cutting',Design:'designs',Payment:'payments'};
+let ME=null, READY=false, slow=false, subErr='', writing=0, CHAN=null, POLL=null;
+const LAST={}, META={};
+COLS.forEach(c=>{LAST[c]={};META[c]={};});
+
+function colName(key){return key.replace('dieshop:','');}
+function getArr(col){return {dies:DIES,customers:CUSTOMERS,orders:ORDERS,maintenance:MAINT,cutting:CUTTING,designs:DESIGNS,payments:PAYMENTS}[col];}
+function assign(col,arr){
+  if(col==='dies') DIES=arr; else if(col==='customers') CUSTOMERS=arr; else if(col==='orders') ORDERS=arr;
+  else if(col==='maintenance') MAINT=arr; else if(col==='cutting') CUTTING=arr;
+  else if(col==='designs') DESIGNS=arr; else if(col==='payments') PAYMENTS=arr;
+}
+function isOwner(){return !!ME&&ME.role==='owner';}
+
+async function fetchCol(col){
+  const rows=[];
+  for(let from=0;;from+=1000){
+    const {data,error}=await sb.from('dieshop_records').select('id,data,updated_at,updated_by_name').eq('collection',col).order('id').range(from,from+999);
+    if(error) throw error;
+    rows.push(...data);
+    if(data.length<1000) break;
+  }
+  const m={},mt={},arr=[];
+  rows.forEach(r=>{const o=r.data||{};o.id=r.id;arr.push(o);m[r.id]=JSON.stringify(o);mt[r.id]={by:r.updated_by_name,at:r.updated_at};});
+  LAST[col]=m;META[col]=mt;assign(col,arr);
+}
+async function refreshAll(){
+  if(document.hidden||writing>0||!ME) return;
+  try{ await Promise.all(COLS.map(fetchCol)); subErr=''; updateStatus(); scheduleRender(); }catch(e){}
+}
+function applyChange(p){
+  const col=(p.new&&p.new.collection)||(p.old&&p.old.collection);
+  if(!COLS.includes(col)) return;
+  if(p.eventType==='DELETE'){
+    const id=p.old.id; delete LAST[col][id]; delete META[col][id];
+    assign(col,getArr(col).filter(o=>o.id!==id));
+  }else{
+    const r=p.new; const o=r.data||{}; o.id=r.id;
+    LAST[col][r.id]=JSON.stringify(o); META[col][r.id]={by:r.updated_by_name,at:r.updated_at};
+    const arr=getArr(col).slice(); const i=arr.findIndex(x=>x.id===r.id);
+    if(i>-1) arr[i]=o; else arr.push(o);
+    assign(col,arr);
+  }
+  scheduleRender();
+}
+async function startData(){
+  READY=false; subErr=''; updateStatus(); renderAll();
+  const slowTimer=setTimeout(()=>{slow=true;updateStatus();},10000);
+  try{ await Promise.all(COLS.map(fetchCol)); READY=true; }
+  catch(e){ subErr='load'; READY=true; }
+  clearTimeout(slowTimer); slow=false;
+  updateStatus(); renderAll();
+  CHAN=sb.channel('dieshop-rt').on('postgres_changes',{event:'*',schema:'public',table:'dieshop_records'},applyChange)
+    .subscribe(st=>{ /* polling below covers any gap */ });
+  POLL=setInterval(refreshAll,60000);
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refreshAll(); });
+  window.addEventListener('online',refreshAll);
+}
+
+/* Write only what changed: new or edited records are saved, removed ones deleted. */
+async function setList(key,list){
+  const col=colName(key);
+  const last=LAST[col];
+  const ids=new Set(list.map(o=>o.id));
+  const toSet=[];
+  list.forEach(o=>{ const s=JSON.stringify(o); if(last[o.id]!==s) toSet.push([o.id,s]); });
+  const toDelete=Object.keys(last).filter(id=>!ids.has(id));
+  writing++;
+  try{
+    for(let i=0;i<toSet.length;i+=200){
+      const chunk=toSet.slice(i,i+200);
+      const {error}=await sb.from('dieshop_records').upsert(chunk.map(([id,s])=>({collection:col,id,data:JSON.parse(s)})),{onConflict:'collection,id'});
+      if(error) throw error;
+      chunk.forEach(([id,s])=>{last[id]=s;});
+    }
+    for(let i=0;i<toDelete.length;i+=200){
+      const chunk=toDelete.slice(i,i+200);
+      const {error}=await sb.from('dieshop_records').delete().eq('collection',col).in('id',chunk);
+      if(error) throw error;
+      chunk.forEach(id=>{delete last[id];delete META[col][id];});
+    }
+    return true;
+  }catch(e){
+    showToast((e&&e.message&&/JWT|expired|permission|policy/i.test(e.message))?"Save nahi hua. Dobara login karein.":"Save nahi hua. Internet check karke dobara try karein.",true);
+    fetchCol(col).then(scheduleRender).catch(()=>{});
+    return false;
+  }finally{ writing--; }
+}
+
+function updateStatus(){
+  const bar=document.getElementById('statusBar');
+  let msg='';
+  if(subErr) msg="Shop data load nahi ho paya. Internet check karke page reload karein.";
+  else if(slow) msg="Shop data abhi nahi mil raha. Jo dikh raha hai wo purana ho sakta hai.";
+  bar.textContent=msg;
+  bar.hidden=!msg;
+}
+
+let rafPending=false;
+function scheduleRender(){
+  if(rafPending) return;
+  rafPending=true;
+  requestAnimationFrame(()=>{ rafPending=false; rr(renderAll); });
+}
+
+function loadingBlock(){
+  return `<div class="empty-state"><div class="et">Loading shop data…</div><div class="es">Dies, orders and daily logs are being fetched.</div></div>`;
+}
+
+/* ===================== TOAST ===================== */
+let toastTimer;
+function showToast(msg,isErr){
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.className=isErr?'show err':'show';
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>{t.className='';},isErr?4200:2400);
+}
+
+/* ===================== NAV ===================== */
+function renderTabs(){
+  const nav=document.getElementById('tabs');
+  nav.innerHTML=TABS.filter(t=>t.id!=='team'||isOwner()).map(t=>`
+    <button class="tab-btn ${t.id===activeTab?'active':''}" onclick="switchTab('${t.id}')">
+      ${ICON[t.icon]}<span>${t.label}</span>
+    </button>`).join('');
+  const pill=document.getElementById('todayPill');
+  pill.textContent=new Date().toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short'});
+}
+function switchTab(id){
+  activeTab=id;
+  try{ localStorage.setItem('dietrack:tab',id); }catch(e){}
+  renderTabs();
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.getElementById('sec-'+id).classList.add('active');
+  renderAll();
+  window.scrollTo({top:0,behavior:'instant'});
+}
+
+/* ===================== RENDER ALL ===================== */
+function renderAll(){
+  renderDashboard();
+  renderDies();
+  renderOrders();
+  renderCutting();
+  renderDesigns();
+  renderPayments();
+  renderCustomers();
+  renderMaintenance();
+}
+
+/* ===================== DASHBOARD ===================== */
+function renderDashboard(){
+  const el=document.getElementById('sec-dashboard');
+  if(!READY){el.innerHTML=loadingBlock();return;}
+  const today=todayISO();
+  const totalDies=DIES.length;
+  const available=DIES.filter(d=>d.status==='Available').length;
+  const inMaint=DIES.filter(d=>d.status==='Maintenance').length;
+  const activeOrders=ORDERS.filter(o=>o.status==='Pending'||o.status==='In Production').length;
+  const totalCustomers=CUSTOMERS.length;
+  const revenue=ORDERS.filter(o=>o.status==='Completed'||o.status==='Delivered')
+    .reduce((s,o)=>s+(Number(o.qtyOrdered)||0)*(Number(o.rate)||0),0);
+
+  const cutToday=CUTTING.filter(c=>c.date===today);
+  const dieCutToday=cutToday.reduce((s,c)=>s+(Number(c.qty)||0),0);
+  const designsToday=DESIGNS.filter(d=>d.date===today);
+  const designCountToday=designsToday.reduce((s,d)=>s+(Number(d.qty)||1),0);
+  const paymentsToday=PAYMENTS.filter(p=>p.date===today);
+  const paymentTotalToday=paymentsToday.reduce((s,p)=>s+(Number(p.amount)||0),0);
+
+  function statusBars(list,statuses,key){
+    if(!list.length) return `<div class="empty-mini">No data yet.</div>`;
+    const total=list.length;
+    return statuses.map(s=>{
+      const count=list.filter(x=>x[key]===s.v).length;
+      const pct=total?Math.round(count/total*100):0;
+      const colorVar = s.c==='green'?'var(--green)':s.c==='amber'?'var(--amber)':s.c==='red'?'var(--red)':s.c==='steel'?'var(--steel)':'var(--gray)';
+      return `<div class="bar-row">
+        <div class="blabel">${esc(s.v)}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${colorVar}"></div></div>
+        <div class="bar-count">${count}</div>
+      </div>`;
+    }).join('');
+  }
+
+  const upcoming=MAINT.filter(m=>m.nextService).sort((a,b)=>a.nextService.localeCompare(b.nextService)).slice(0,5);
+  const upcomingHtml=upcoming.length? `<ul class="mini-list">${upcoming.map(m=>{
+      const die=DIES.find(d=>d.id===m.dieId);
+      const overdue=m.nextService<today;
+      return `<li><span class="mtitle">${esc(die?die.dieNo:'—')} ${die?'· '+esc(die.name):''}</span>
+        <span class="msub ${overdue?'overdue':''}">${overdue?'Overdue · ':'Due '}${fmtDate(m.nextService)}</span></li>`;
+    }).join('')}</ul>` : `<div class="empty-mini">No upcoming services scheduled.</div>`;
+
+  const recentOrders=[...ORDERS].sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).slice(0,5);
+  const recentHtml=recentOrders.length? `<ul class="mini-list">${recentOrders.map(o=>{
+      const cust=CUSTOMERS.find(c=>c.id===o.customerId);
+      return `<li><span class="mtitle">${esc(o.jobNo)} · ${esc(cust?cust.name:'—')}</span><span class="msub">${plateFor(o.status,ORDER_STATUSES)}</span></li>`;
+    }).join('')}</ul>` : `<div class="empty-mini">No orders yet.</div>`;
+
+  function activityList(items,render){
+    if(!items.length) return `<div class="empty-mini">Nothing logged today.</div>`;
+    return `<ul class="mini-list">${items.map(render).join('')}</ul>`;
+  }
+  const cuttingActivityHtml=activityList(cutToday,c=>{
+    const die=DIES.find(d=>d.id===c.dieId), cust=CUSTOMERS.find(x=>x.id===c.customerId);
+    return `<li><span class="mtitle">${esc(die?die.dieNo:'—')} · ${esc(cust?cust.name:'—')}</span><span class="msub">${c.qty} pcs</span></li>`;
+  });
+  const designActivityHtml=activityList(designsToday,d=>{
+    const cust=CUSTOMERS.find(x=>x.id===d.customerId);
+    return `<li><span class="mtitle">${esc(d.designName)}</span><span class="msub">${esc(d.designerName)}${cust?' · '+esc(cust.name):''}</span></li>`;
+  });
+  const paymentActivityHtml=activityList(paymentsToday,p=>{
+    const cust=CUSTOMERS.find(x=>x.id===p.customerId);
+    return `<li><span class="mtitle">${esc(cust?cust.name:'—')}</span><span class="msub">${fmtMoney(p.amount)}</span></li>`;
+  });
+
+  el.innerHTML=`
+    <div class="section-head">
+      <div><div class="section-title">Dashboard</div><div class="section-sub">Shop overview at a glance</div></div>
+    </div>
+
+    <div class="group-label">Today</div>
+    <div class="plate-grid plate-grid-sub">
+      <div class="stat-plate accent"><div class="num">${dieCutToday}</div><div class="lbl">Dies Cut Today</div></div>
+      <div class="stat-plate accent"><div class="num">${designCountToday}</div><div class="lbl">Designs Today</div></div>
+      <div class="stat-plate accent"><div class="num">${fmtMoney(paymentTotalToday)}</div><div class="lbl">Payment Received Today</div></div>
+    </div>
+
+    <div class="group-label">Overall</div>
+    <div class="plate-grid">
+      <div class="stat-plate"><div class="num">${totalDies}</div><div class="lbl">Total Dies</div></div>
+      <div class="stat-plate"><div class="num">${available}</div><div class="lbl">Available</div></div>
+      <div class="stat-plate"><div class="num">${inMaint}</div><div class="lbl">In Maintenance</div></div>
+      <div class="stat-plate"><div class="num">${activeOrders}</div><div class="lbl">Active Orders</div></div>
+      <div class="stat-plate"><div class="num">${totalCustomers}</div><div class="lbl">Customers</div></div>
+      <div class="stat-plate"><div class="num">${fmtMoney(revenue)}</div><div class="lbl">Revenue (Completed)</div></div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <h3>Today's Activity</h3>
+      <div class="activity-grid">
+        <div><div class="group-label" style="margin-bottom:6px;">Cutting</div>${cuttingActivityHtml}</div>
+        <div><div class="group-label" style="margin-bottom:6px;">Designs</div>${designActivityHtml}</div>
+        <div><div class="group-label" style="margin-bottom:6px;">Payments</div>${paymentActivityHtml}</div>
+      </div>
+    </div>
+
+    <div class="dash-grid">
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div class="card"><h3>Dies by Status</h3>${statusBars(DIES,DIE_STATUSES,'status')}</div>
+        <div class="card"><h3>Orders by Status</h3>${statusBars(ORDERS,ORDER_STATUSES,'status')}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div class="card"><h3>Upcoming Maintenance</h3>${upcomingHtml}</div>
+        <div class="card"><h3>Recent Orders</h3>${recentHtml}</div>
+      </div>
+    </div>
+  `;
+}
+
+/* ===================== DIES ===================== */
+let dieSearch='', dieFilter='';
+function renderDies(){
+  const el=document.getElementById('sec-dies');
+  if(!READY){el.innerHTML=loadingBlock();return;}
+  let list=DIES.filter(d=>
+    (!dieFilter||d.status===dieFilter) &&
+    (!dieSearch || (d.dieNo+' '+d.name+' '+(d.location||'')).toLowerCase().includes(dieSearch.toLowerCase()))
+  ).sort((a,b)=>(a.dieNo||'').localeCompare(b.dieNo||''));
+
+  el.innerHTML=`
+    <div class="section-head">
+      <div><div class="section-title">Dies</div><div class="section-sub">${DIES.length} die${DIES.length===1?'':'s'} in your shop</div></div>
+      <button class="btn btn-primary" onclick="openDieForm()">${ICON.plus} Add Die</button>
+    </div>
+    <div class="toolbar">
+      <input class="search-input" id="dieSearchInput" placeholder="Search by die no, name, location..." value="${esc(dieSearch)}" oninput="dieSearch=this.value;rr(renderDies)">
+      <select class="filter-select" onchange="dieFilter=this.value;renderDies()">
+        <option value="">All statuses</option>
+        ${DIE_STATUSES.map(s=>`<option value="${s.v}" ${dieFilter===s.v?'selected':''}>${s.v}</option>`).join('')}
+      </select>
+    </div>
+    <div class="data-list" id="diesList"></div>
+  `;
+  const listEl=document.getElementById('diesList');
+  if(!list.length){
+    listEl.innerHTML=`<div class="empty-state">${ICON.box}<div class="et">${DIES.length?'No matching dies':'No dies yet'}</div><div class="es">${DIES.length?'Try a different search or filter.':'Add your first die to start tracking your tooling.'}</div>${!DIES.length?`<button class="btn btn-primary" onclick="openDieForm()">${ICON.plus} Add Die</button>`:''}</div>`;
+    return;
+  }
+  listEl.innerHTML=list.map(d=>`
+    <div class="row-card">
+      <div class="row-top">
+        <div>
+          <div class="row-title">${esc(d.dieNo)} — ${esc(d.name)}</div>
+          <div class="row-sub">${esc(d.type||'—')}${d.size?' · '+esc(d.size):''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          ${plateFor(d.status,DIE_STATUSES)}
+          <div class="row-actions">
+            <button class="icon-btn" aria-label="Edit die" onclick="openDieForm('${d.id}')">${ICON.edit}</button>
+            <button class="icon-btn" aria-label="Delete die" onclick="deleteDie('${d.id}')">${ICON.trash}</button>
+          </div>
+        </div>
+      </div>
+      <div class="row-meta">
+        ${d.material?`<span><b>Material:</b> ${esc(d.material)}</span>`:''}
+        ${d.location?`<span><b>Location:</b> ${esc(d.location)}</span>`:''}
+        ${d.lastServiced?`<span><b>Last serviced:</b> ${fmtDate(d.lastServiced)}</span>`:''}
+      </div>
+      ${d.notes?`<div class="row-meta" style="margin-top:4px;">${esc(d.notes)}</div>`:''}
+    </div>
+  `).join('');
+}
+
+function openDieForm(id){
+  const editing=id?DIES.find(d=>d.id===id):null;
+  document.getElementById('modalTitle').textContent=editing?'Edit Die':'Add Die';
+  document.getElementById('modalBody').innerHTML=`
+    <div class="field-row">
+      <div class="field"><label for="f_dieNo">Die No *</label><input id="f_dieNo" value="${esc(editing?.dieNo)}" placeholder="e.g. D-1042"></div>
+      <div class="field"><label for="f_status">Status</label><select id="f_status">${DIE_STATUSES.map(s=>`<option value="${s.v}" ${editing&&editing.status===s.v?'selected':''}>${s.v}</option>`).join('')}</select></div>
+    </div>
+    <div class="field"><label for="f_name">Name *</label><input id="f_name" value="${esc(editing?.name)}" placeholder="e.g. Bracket Punch Die"></div>
+    <div class="field-row">
+      <div class="field"><label for="f_type">Type</label><select id="f_type">${DIE_TYPES.map(t=>`<option value="${t}" ${editing&&editing.type===t?'selected':''}>${t}</option>`).join('')}</select></div>
+      <div class="field"><label for="f_size">Size</label><input id="f_size" value="${esc(editing?.size)}" placeholder="e.g. 200x150mm"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label for="f_material">Material</label><input id="f_material" value="${esc(editing?.material)}" placeholder="e.g. HCHCr Steel"></div>
+      <div class="field"><label for="f_location">Rack / Location</label><input id="f_location" value="${esc(editing?.location)}" placeholder="e.g. Rack B-3"></div>
+    </div>
+    <div class="field"><label for="f_notes">Notes</label><textarea id="f_notes">${esc(editing?.notes)}</textarea></div>
+  `;
+  document.getElementById('modalSaveBtn').onclick=()=>saveDie(id);
+  openModal();
+}
+async function saveDie(id){
+  const dieNo=document.getElementById('f_dieNo').value.trim();
+  const name=document.getElementById('f_name').value.trim();
+  if(!dieNo||!name){showToast('Die No and Name are required.',true);return;}
+  const old=id?DIES.find(d=>d.id===id):null;
+  const obj={
+    id:id||uid('die'),
+    dieNo, name,
+    type:document.getElementById('f_type').value,
+    status:document.getElementById('f_status').value,
+    size:document.getElementById('f_size').value.trim(),
+    material:document.getElementById('f_material').value.trim(),
+    location:document.getElementById('f_location').value.trim(),
+    notes:document.getElementById('f_notes').value.trim(),
+    lastServiced:old?(old.lastServiced||''):'',
+    createdAt:old?(old.createdAt||todayISO()):todayISO(),
+  };
+  const idx=DIES.findIndex(d=>d.id===id);
+  if(idx>-1) DIES[idx]=obj; else DIES.push(obj);
+  const ok=await setList('dieshop:dies',DIES);
+  if(ok){closeModal();showToast(id?'Die updated.':'Die added.');renderAll();}
+}
+async function deleteDie(id){
+  if(!confirm('Delete this die? This cannot be undone.'))return;
+  DIES=DIES.filter(d=>d.id!==id);
+  const ok=await setList('dieshop:dies',DIES);
+  if(ok){showToast('Die deleted.');renderAll();}
+}
+
+/* ===================== CUSTOMERS ===================== */
+let custSearch='';
+function renderCustomers(){
+  const el=document.getElementById('sec-customers');
+  if(!READY){el.innerHTML=loadingBlock();return;}
+  let list=CUSTOMERS.filter(c=>!custSearch||(c.name+' '+(c.phone||'')+' '+(c.email||'')).toLowerCase().includes(custSearch.toLowerCase()))
+    .sort((a,b)=>a.name.localeCompare(b.name));
+  el.innerHTML=`
+    <div class="section-head">
+      <div><div class="section-title">Customers</div><div class="section-sub">${CUSTOMERS.length} customer${CUSTOMERS.length===1?'':'s'}</div></div>
+      <button class="btn btn-primary" onclick="openCustomerForm()">${ICON.plus} Add Customer</button>
+    </div>
+    <div class="toolbar">
+      <input class="search-input" id="custSearchInput" placeholder="Search by name, phone, email..." value="${esc(custSearch)}" oninput="custSearch=this.value;rr(renderCustomers)">
+    </div>
+    <div class="data-list" id="custList"></div>
+  `;
+  const listEl=document.getElementById('custList');
+  if(!list.length){
+    listEl.innerHTML=`<div class="empty-state">${ICON.box}<div class="et">${CUSTOMERS.length?'No matching customers':'No customers yet'}</div><div class="es">${CUSTOMERS.length?'Try a different search.':'Add a customer to start linking orders.'}</div>${!CUSTOMERS.length?`<button class="btn btn-primary" onclick="openCustomerForm()">${ICON.plus} Add Customer</button>`:''}</div>`;
+    return;
+  }
+  listEl.innerHTML=list.map(c=>{
+    const orderCount=ORDERS.filter(o=>o.customerId===c.id).length;
+    return `
+    <div class="row-card">
+      <div class="row-top">
+        <div>
+          <div class="row-title">${esc(c.name)}</div>
+          <div class="row-sub">${esc(c.contact||'')}</div>
+        </div>
+        <div class="row-actions">
+          <button class="icon-btn" aria-label="Edit customer" onclick="openCustomerForm('${c.id}')">${ICON.edit}</button>
+          <button class="icon-btn" aria-label="Delete customer" onclick="deleteCustomer('${c.id}')">${ICON.trash}</button>
+        </div>
+      </div>
+      <div class="row-meta">
+        ${c.phone?`<span><b>Phone:</b> ${esc(c.phone)}</span>`:''}
+        ${c.email?`<span><b>Email:</b> ${esc(c.email)}</span>`:''}
+        <span><b>Orders:</b> ${orderCount}</span>
+      </div>
+      ${c.address?`<div class="row-meta" style="margin-top:4px;">${esc(c.address)}</div>`:''}
+    </div>`;
+  }).join('');
+}
+function openCustomerForm(id){
+  const editing=id?CUSTOMERS.find(c=>c.id===id):null;
+  document.getElementById('modalTitle').textContent=editing?'Edit Customer':'Add Customer';
+  document.getElementById('modalBody').innerHTML=`
+    <div class="field"><label for="f_name">Name / Company *</label><input id="f_name" value="${esc(editing?.name)}" placeholder="e.g. Suresh Auto Components"></div>
+    <div class="field"><label for="f_contact">Contact Person</label><input id="f_contact" value="${esc(editing?.contact)}" placeholder="e.g. Suresh Patel"></div>
+    <div class="field-row">
+      <div class="field"><label for="f_phone">Phone</label><input id="f_phone" value="${esc(editing?.phone)}" placeholder="e.g. 98765 43210"></div>
+      <div class="field"><label for="f_email">Email</label><input id="f_email" value="${esc(editing?.email)}" placeholder="optional"></div>
+    </div>
+    <div class="field"><label for="f_address">Address</label><textarea id="f_address">${esc(editing?.address)}</textarea></div>
+    <div class="field"><label for="f_notes">Notes</label><textarea id="f_notes">${esc(editing?.notes)}</textarea></div>
+  `;
+  document.getElementById('modalSaveBtn').onclick=()=>saveCustomer(id);
+  openModal();
+}
+async function saveCustomer(id){
+  const name=document.getElementById('f_name').value.trim();
+  if(!name){showToast('Name is required.',true);return;}
+  const old=id?CUSTOMERS.find(c=>c.id===id):null;
+  const obj={
+    id:id||uid('cust'),
+    name,
+    contact:document.getElementById('f_contact').value.trim(),
+    phone:document.getElementById('f_phone').value.trim(),
+    email:document.getElementById('f_email').value.trim(),
+    address:document.getElementById('f_address').value.trim(),
+    notes:document.getElementById('f_notes').value.trim(),
+    createdAt:old?(old.createdAt||todayISO()):todayISO(),
+  };
+  const idx=CUSTOMERS.findIndex(c=>c.id===id);
+  if(idx>-1) CUSTOMERS[idx]=obj; else CUSTOMERS.push(obj);
+  const ok=await setList('dieshop:customers',CUSTOMERS);
+  if(ok){closeModal();showToast(id?'Customer updated.':'Customer added.');renderAll();}
+}
+async function deleteCustomer(id){
+  if(!confirm('Delete this customer? Existing records will keep showing "Unknown customer".'))return;
+  CUSTOMERS=CUSTOMERS.filter(c=>c.id!==id);
+  const ok=await setList('dieshop:customers',CUSTOMERS);
+  if(ok){showToast('Customer deleted.');renderAll();}
+}
+
+/* ===================== ORDERS ===================== */
+let orderSearch='', orderFilter='';
+function nextJobNo(){
+  let max=0;
+  ORDERS.forEach(o=>{const m=/JC-(\d+)/.exec(o.jobNo||'');if(m)max=Math.max(max,parseInt(m[1],10));});
+  return 'JC-'+String(max+1).padStart(4,'0');
+}
+function renderOrders(){
+  const el=document.getElementById('sec-orders');
+  if(!READY){el.innerHTML=loadingBlock();return;}
+  let list=ORDERS.filter(o=>{
+    const cust=CUSTOMERS.find(c=>c.id===o.customerId);
+    const text=(o.jobNo+' '+(cust?cust.name:'')).toLowerCase();
+    return (!orderFilter||o.status===orderFilter) && (!orderSearch||text.includes(orderSearch.toLowerCase()));
+  }).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+
+  el.innerHTML=`
+    <div class="section-head">
+      <div><div class="section-title">Orders</div><div class="section-sub">${ORDERS.length} job${ORDERS.length===1?'':'s'} recorded</div></div>
+      <button class="btn btn-primary" onclick="openOrderForm()" ${!CUSTOMERS.length||!DIES.length?'disabled title="Add a die and customer first"':''}>${ICON.plus} New Order</button>
+    </div>
+    <div class="toolbar">
+      <input class="search-input" id="orderSearchInput" placeholder="Search by job no, customer..." value="${esc(orderSearch)}" oninput="orderSearch=this.value;rr(renderOrders)">
+      <select class="filter-select" onchange="orderFilter=this.value;renderOrders()">
+        <option value="">All statuses</option>
+        ${ORDER_STATUSES.map(s=>`<option value="${s.v}" ${orderFilter===s.v?'selected':''}>${s.v}</option>`).join('')}
+      </select>
+    </div>
+    <div class="data-list" id="ordersList"></div>
+  `;
+  const listEl=document.getElementById('ordersList');
+  if(!DIES.length||!CUSTOMERS.length){
+    listEl.innerHTML=`<div class="empty-state">${ICON.box}<div class="et">Add a die and a customer first</div><div class="es">Orders link a customer to a die. Set those up before creating a job.</div></div>`;
+    return;
+  }
+  if(!list.length){
+    listEl.innerHTML=`<div class="empty-state">${ICON.box}<div class="et">${ORDERS.length?'No matching orders':'No orders yet'}</div><div class="es">${ORDERS.length?'Try a different search or filter.':'Create your first job order.'}</div>${!ORDERS.length?`<button class="btn btn-primary" onclick="openOrderForm()">${ICON.plus} New Order</button>`:''}</div>`;
+    return;
+  }
+  listEl.innerHTML=list.map(o=>{
+    const cust=CUSTOMERS.find(c=>c.id===o.customerId);
+    const die=DIES.find(d=>d.id===o.dieId);
+    const total=(Number(o.qtyOrdered)||0)*(Number(o.rate)||0);
+    const progress=o.qtyOrdered?Math.min(100,Math.round((Number(o.qtyProduced)||0)/Number(o.qtyOrdered)*100)):0;
+    return `
+    <div class="row-card">
+      <div class="row-top">
+        <div>
+          <div class="row-title">${esc(o.jobNo)} — ${esc(cust?cust.name:'Unknown customer')}</div>
+          <div class="row-sub">Die: ${esc(die?die.dieNo+' · '+die.name:'Unknown die')}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          ${plateFor(o.status,ORDER_STATUSES)}
+          <div class="row-actions">
+            <button class="icon-btn" aria-label="Edit order" onclick="openOrderForm('${o.id}')">${ICON.edit}</button>
+            <button class="icon-btn" aria-label="Delete order" onclick="deleteOrder('${o.id}')">${ICON.trash}</button>
+          </div>
+        </div>
+      </div>
+      <div class="row-meta">
+        <span><b>Qty:</b> ${o.qtyProduced||0} / ${o.qtyOrdered||0} (${progress}%)</span>
+        ${o.rate?`<span><b>Value:</b> ${fmtMoney(total)}</span>`:''}
+        ${o.dueDate?`<span><b>Due:</b> ${fmtDate(o.dueDate)}</span>`:''}
+      </div>
+      ${o.notes?`<div class="row-meta" style="margin-top:4px;">${esc(o.notes)}</div>`:''}
+    </div>`;
+  }).join('');
+}
+function openOrderForm(id){
+  if(!DIES.length||!CUSTOMERS.length){showToast('Add a die and a customer first.',true);return;}
+  const editing=id?ORDERS.find(o=>o.id===id):null;
+  document.getElementById('modalTitle').textContent=editing?'Edit Order':'New Order';
+  document.getElementById('modalBody').innerHTML=`
+    <div class="field-row">
+      <div class="field"><label for="f_jobNo">Job No</label><input id="f_jobNo" value="${esc(editing?editing.jobNo:nextJobNo())}" ${editing?'':'readonly'}></div>
+      <div class="field"><label for="f_status">Status</label><select id="f_status">${ORDER_STATUSES.map(s=>`<option value="${s.v}" ${editing&&editing.status===s.v?'selected':''}>${s.v}</option>`).join('')}</select></div>
+    </div>
+    <div class="field"><label for="f_customerId">Customer *</label><select id="f_customerId">${CUSTOMERS.map(c=>`<option value="${c.id}" ${editing&&editing.customerId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+    <div class="field"><label for="f_dieId">Die *</label><select id="f_dieId">${DIES.map(d=>`<option value="${d.id}" ${editing&&editing.dieId===d.id?'selected':''}>${esc(d.dieNo)} — ${esc(d.name)}</option>`).join('')}</select></div>
+    <div class="field-row">
+      <div class="field"><label for="f_qtyOrdered">Qty Ordered</label><input id="f_qtyOrdered" type="number" inputmode="numeric" min="0" value="${editing?editing.qtyOrdered:''}"></div>
+      <div class="field"><label for="f_qtyProduced">Qty Produced</label><input id="f_qtyProduced" type="number" inputmode="numeric" min="0" value="${editing?editing.qtyProduced:0}"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label for="f_rate">Rate / unit (₹)</label><input id="f_rate" type="number" inputmode="decimal" min="0" value="${editing?editing.rate:''}"></div>
+      <div class="field"><label for="f_dueDate">Due Date</label><input id="f_dueDate" type="date" value="${esc(editing?.dueDate)}"></div>
+    </div>
+    <div class="field"><label for="f_notes">Notes</label><textarea id="f_notes">${esc(editing?.notes)}</textarea></div>
+  `;
+  document.getElementById('modalSaveBtn').onclick=()=>saveOrder(id);
+  openModal();
+}
+async function saveOrder(id){
+  const customerId=document.getElementById('f_customerId').value;
+  const dieId=document.getElementById('f_dieId').value;
+  if(!customerId||!dieId){showToast('Customer and Die are required.',true);return;}
+  const old=id?ORDERS.find(o=>o.id===id):null;
+  const obj={
+    id:id||uid('ord'),
+    jobNo:document.getElementById('f_jobNo').value.trim()||nextJobNo(),
+    customerId, dieId,
+    status:document.getElementById('f_status').value,
+    qtyOrdered:Number(document.getElementById('f_qtyOrdered').value)||0,
+    qtyProduced:Number(document.getElementById('f_qtyProduced').value)||0,
+    rate:Number(document.getElementById('f_rate').value)||0,
+    dueDate:document.getElementById('f_dueDate').value,
+    notes:document.getElementById('f_notes').value.trim(),
+    createdAt:old?(old.createdAt||new Date().toISOString()):new Date().toISOString(),
+  };
+  const idx=ORDERS.findIndex(o=>o.id===id);
+  if(idx>-1) ORDERS[idx]=obj; else ORDERS.push(obj);
+  const ok=await setList('dieshop:orders',ORDERS);
+  if(ok){closeModal();showToast(id?'Order updated.':'Order created.');renderAll();}
+}
+async function deleteOrder(id){
+  if(!confirm('Delete this order?'))return;
+  ORDERS=ORDERS.filter(o=>o.id!==id);
+  const ok=await setList('dieshop:orders',ORDERS);
+  if(ok){showToast('Order deleted.');renderAll();}
+}
+
+/* ===================== DAILY CUTTING LOG ===================== */
+let cuttingDate=todayISO(), cuttingSearch='';
+function renderCutting(){
+  const el=document.getElementById('sec-cutting');
+  if(!READY){el.innerHTML=loadingBlock();return;}
+  let list=CUTTING.filter(c=>{
+    const die=DIES.find(d=>d.id===c.dieId), cust=CUSTOMERS.find(x=>x.id===c.customerId);
+    const text=((die?die.dieNo+' '+die.name:'')+' '+(cust?cust.name:'')+' '+(c.operator||'')).toLowerCase();
+    return (!cuttingDate||c.date===cuttingDate) && (!cuttingSearch||text.includes(cuttingSearch.toLowerCase()));
+  }).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  const totalQty=list.reduce((s,c)=>s+(Number(c.qty)||0),0);
+
+  el.innerHTML=`
+    <div class="section-head">
+      <div><div class="section-title">Daily Cutting Log</div><div class="section-sub">${list.length} entr${list.length===1?'y':'ies'} · ${totalQty} pcs ${cuttingDate?'on '+fmtDateShort(cuttingDate):'total'}</div></div>
+      <button class="btn btn-primary" onclick="openCuttingForm()" ${!DIES.length||!CUSTOMERS.length?'disabled title="Add a die and customer first"':''}>${ICON.plus} Log Cutting</button>
+    </div>
+    <div class="toolbar">
+      <input class="date-filter" type="date" value="${cuttingDate}" onchange="cuttingDate=this.value;renderCutting()" aria-label="Filter by date">
+      <button class="chip-btn ${cuttingDate===todayISO()?'on':''}" onclick="cuttingDate='${todayISO()}';renderCutting()">Today</button>
+      <button class="chip-btn ${cuttingDate===''?'on':''}" onclick="cuttingDate='';renderCutting()">All</button>
+      <input class="search-input" id="cuttingSearchInput" placeholder="Search die, customer, operator..." value="${esc(cuttingSearch)}" oninput="cuttingSearch=this.value;rr(renderCutting)">
+    </div>
+    <div class="data-list" id="cuttingList"></div>
+  `;
+  const listEl=document.getElementById('cuttingList');
+  if(!DIES.length||!CUSTOMERS.length){
+    listEl.innerHTML=`<div class="empty-state">${ICON.box}<div class="et">Add a die and a customer first</div><div class="es">Each cutting entry needs a die and a customer.</div></div>`;
+    return;
+  }
+  if(!list.length){
+    listEl.innerHTML=`<div class="empty-state">${ICON.box}<div class="et">No cutting logged${cuttingDate?' for this date':''}</div><div class="es">Record how many pieces were cut and for whom.</div><button class="btn btn-primary" onclick="openCuttingForm()">${ICON.plus} Log Cutting</button></div>`;
+    return;
+  }
+  listEl.innerHTML=list.map(c=>{
+    const die=DIES.find(d=>d.id===c.dieId), cust=CUSTOMERS.find(x=>x.id===c.customerId);
+    const order=ORDERS.find(o=>o.id===c.orderId);
+    return `
+    <div class="row-card">
+      <div class="row-top">
+        <div>
+          <div class="row-title">${esc(die?die.dieNo+' — '+die.name:'Unknown die')}</div>
+          <div class="row-sub">${esc(cust?cust.name:'Unknown customer')}${order?' · '+esc(order.jobNo):''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="plate steel">${c.qty} pcs</span>
+          <div class="row-actions">
+            <button class="icon-btn" aria-label="Edit entry" onclick="openCuttingForm('${c.id}')">${ICON.edit}</button>
+            <button class="icon-btn" aria-label="Delete entry" onclick="deleteCutting('${c.id}')">${ICON.trash}</button>
+          </div>
+        </div>
+      </div>
+      <div class="row-meta">
+        <span><b>Date:</b> ${fmtDate(c.date)}</span>
+        ${c.operator?`<span><b>Operator:</b> ${esc(c.operator)}</span>`:''}
+      </div>
+      ${c.notes?`<div class="row-meta" style="margin-top:4px;">${esc(c.notes)}</div>`:''}
+    </div>`;
+  }).join('');
+}
+function openCuttingForm(id){
+  if(!DIES.length||!CUSTOMERS.length){showToast('Add a die and a customer first.',true);return;}
+  const editing=id?CUTTING.find(c=>c.id===id):null;
+  document.getElementById('modalTitle').textContent=editing?'Edit Cutting Entry':'Log Cutting';
+  document.getElementById('modalBody').innerHTML=`
+    <div class="field-row">
+      <div class="field"><label for="f_date">Date</label><input id="f_date" type="date" value="${editing?editing.date:todayISO()}"></div>
+      <div class="field"><label for="f_qty">Qty Cut *</label><input id="f_qty" type="number" inputmode="numeric" min="0" value="${editing?editing.qty:''}"></div>
+    </div>
+    <div class="field"><label for="f_dieId">Die *</label><select id="f_dieId">${DIES.map(d=>`<option value="${d.id}" ${editing&&editing.dieId===d.id?'selected':''}>${esc(d.dieNo)} — ${esc(d.name)}</option>`).join('')}</select></div>
+    <div class="field"><label for="f_customerId">Customer *</label><select id="f_customerId">${CUSTOMERS.map(c=>`<option value="${c.id}" ${editing&&editing.customerId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+    <div class="field"><label for="f_orderId">Order (optional, updates job progress)</label><select id="f_orderId"><option value="">No order link</option>${ORDERS.map(o=>{const cu=CUSTOMERS.find(x=>x.id===o.customerId);return `<option value="${o.id}" ${editing&&editing.orderId===o.id?'selected':''}>${esc(o.jobNo)} — ${esc(cu?cu.name:'')}</option>`;}).join('')}</select></div>
+    <div class="field"><label for="f_operator">Operator / Worker</label><input id="f_operator" list="operatorList" value="${esc(editing?.operator)}" placeholder="e.g. Ramesh"><datalist id="operatorList">${uniqueVals(CUTTING,'operator').map(v=>`<option value="${esc(v)}">`).join('')}</datalist></div>
+    <div class="field"><label for="f_notes">Notes</label><textarea id="f_notes">${esc(editing?.notes)}</textarea></div>
+  `;
+  document.getElementById('modalSaveBtn').onclick=()=>saveCutting(id);
+  openModal();
+}
+async function saveCutting(id){
+  const dieId=document.getElementById('f_dieId').value;
+  const customerId=document.getElementById('f_customerId').value;
+  const qty=Number(document.getElementById('f_qty').value)||0;
+  if(!dieId||!customerId||!qty){showToast('Die, customer and quantity are required.',true);return;}
+  const editing=id?CUTTING.find(c=>c.id===id):null;
+  const oldQty=editing?Number(editing.qty)||0:0;
+  const oldOrderId=editing?editing.orderId:'';
+  const orderId=document.getElementById('f_orderId').value||'';
+  const obj={
+    id:id||uid('cut'),
+    date:document.getElementById('f_date').value||todayISO(),
+    dieId, customerId, orderId, qty,
+    operator:document.getElementById('f_operator').value.trim(),
+    notes:document.getElementById('f_notes').value.trim(),
+    createdAt:editing?editing.createdAt:new Date().toISOString(),
+  };
+  const idx=CUTTING.findIndex(c=>c.id===id);
+  if(idx>-1) CUTTING[idx]=obj; else CUTTING.push(obj);
+
+  let ordersChanged=false;
+  if(oldOrderId && oldOrderId!==orderId){
+    const oOld=ORDERS.find(o=>o.id===oldOrderId);
+    if(oOld){oOld.qtyProduced=Math.max(0,(Number(oOld.qtyProduced)||0)-oldQty);ordersChanged=true;}
+  }
+  if(orderId){
+    const oNew=ORDERS.find(o=>o.id===orderId);
+    if(oNew){
+      if(oldOrderId===orderId){
+        oNew.qtyProduced=Math.max(0,(Number(oNew.qtyProduced)||0)-oldQty+qty);
+      }else{
+        oNew.qtyProduced=(Number(oNew.qtyProduced)||0)+qty;
+      }
+      ordersChanged=true;
+    }
+  }
+  const [ok1,ok2]=await Promise.all([
+    setList('dieshop:cutting',CUTTING),
+    ordersChanged?setList('dieshop:orders',ORDERS):Promise.resolve(true)
+  ]);
+  if(ok1&&ok2){closeModal();showToast(id?'Entry updated.':'Cutting logged.');renderAll();}
+}
+async function deleteCutting(id){
+  if(!confirm('Delete this cutting entry?'))return;
+  const entry=CUTTING.find(c=>c.id===id);
+  CUTTING=CUTTING.filter(c=>c.id!==id);
+  let ordersChanged=false;
+  if(entry && entry.orderId){
+    const o=ORDERS.find(x=>x.id===entry.orderId);
+    if(o){o.qtyProduced=Math.max(0,(Number(o.qtyProduced)||0)-(Number(entry.qty)||0));ordersChanged=true;}
+  }
+  const [ok1,ok2]=await Promise.all([
+    setList('dieshop:cutting',CUTTING),
+    ordersChanged?setList('dieshop:orders',ORDERS):Promise.resolve(true)
+  ]);
+  if(ok1&&ok2){showToast('Entry deleted.');renderAll();}
+}
+
+/* ===================== DESIGNS ===================== */
+let designDate=todayISO(), designSearch='';
+function renderDesigns(){
+  const el=document.getElementById('sec-designs');
+  if(!READY){el.innerHTML=loadingBlock();return;}
+  let list=DESIGNS.filter(d=>{
+    const cust=CUSTOMERS.find(x=>x.id===d.customerId);
+    const text=(d.designerName+' '+d.designName+' '+(cust?cust.name:'')).toLowerCase();
+    return (!designDate||d.date===designDate) && (!designSearch||text.includes(designSearch.toLowerCase()));
+  }).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  const totalCount=list.reduce((s,d)=>s+(Number(d.qty)||1),0);
+
+  el.innerHTML=`
+    <div class="section-head">
+      <div><div class="section-title">Designs</div><div class="section-sub">${totalCount} design${totalCount===1?'':'s'} ${designDate?'on '+fmtDateShort(designDate):'total'}</div></div>
+      <button class="btn btn-primary" onclick="openDesignForm()">${ICON.plus} Log Design</button>
+    </div>
+    <div class="toolbar">
+      <input class="date-filter" type="date" value="${designDate}" onchange="designDate=this.value;renderDesigns()" aria-label="Filter by date">
+      <button class="chip-btn ${designDate===todayISO()?'on':''}" onclick="designDate='${todayISO()}';renderDesigns()">Today</button>
+      <button class="chip-btn ${designDate===''?'on':''}" onclick="designDate='';renderDesigns()">All</button>
+      <input class="search-input" id="designSearchInput" placeholder="Search designer, design, customer..." value="${esc(designSearch)}" oninput="designSearch=this.value;rr(renderDesigns)">
+    </div>
+    <div class="data-list" id="designsList"></div>
+  `;
+  const listEl=document.getElementById('designsList');
+  if(!list.length){
+    listEl.innerHTML=`<div class="empty-state">${ICON.box}<div class="et">No designs logged${designDate?' for this date':''}</div><div class="es">Track what each designer made and for whom.</div><button class="btn btn-primary" onclick="openDesignForm()">${ICON.plus} Log Design</button></div>`;
+    return;
+  }
+  listEl.innerHTML=list.map(d=>{
+    const cust=CUSTOMERS.find(x=>x.id===d.customerId);
+    return `
+    <div class="row-card">
+      <div class="row-top">
+        <div>
+          <div class="row-title">${esc(d.designName)}</div>
+          <div class="row-sub">by ${esc(d.designerName)}${cust?' · for '+esc(cust.name):''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="plate amber">${d.qty||1}x</span>
+          <div class="row-actions">
+            <button class="icon-btn" aria-label="Edit entry" onclick="openDesignForm('${d.id}')">${ICON.edit}</button>
+            <button class="icon-btn" aria-label="Delete entry" onclick="deleteDesign('${d.id}')">${ICON.trash}</button>
+          </div>
+        </div>
+      </div>
+      <div class="row-meta"><span><b>Date:</b> ${fmtDate(d.date)}</span></div>
+      ${d.notes?`<div class="row-meta" style="margin-top:4px;">${esc(d.notes)}</div>`:''}
+    </div>`;
+  }).join('');
+}
+function openDesignForm(id){
+  const editing=id?DESIGNS.find(d=>d.id===id):null;
+  document.getElementById('modalTitle').textContent=editing?'Edit Design Entry':'Log Design';
+  document.getElementById('modalBody').innerHTML=`
+    <div class="field-row">
+      <div class="field"><label for="f_date">Date</label><input id="f_date" type="date" value="${editing?editing.date:todayISO()}"></div>
+      <div class="field"><label for="f_qty">Qty</label><input id="f_qty" type="number" inputmode="numeric" min="1" value="${editing?editing.qty:1}"></div>
+    </div>
+    <div class="field"><label for="f_designerName">Designer Name *</label><input id="f_designerName" list="designerList" value="${esc(editing?.designerName)}" placeholder="e.g. Pooja"><datalist id="designerList">${uniqueVals(DESIGNS,'designerName').map(v=>`<option value="${esc(v)}">`).join('')}</datalist></div>
+    <div class="field"><label for="f_designName">Design Name *</label><input id="f_designName" value="${esc(editing?.designName)}" placeholder="e.g. Bracket v3 layout"></div>
+    <div class="field"><label for="f_customerId">Customer</label><select id="f_customerId"><option value="">No customer link</option>${CUSTOMERS.map(c=>`<option value="${c.id}" ${editing&&editing.customerId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+    <div class="field"><label for="f_notes">Notes</label><textarea id="f_notes">${esc(editing?.notes)}</textarea></div>
+  `;
+  document.getElementById('modalSaveBtn').onclick=()=>saveDesign(id);
+  openModal();
+}
+async function saveDesign(id){
+  const designerName=document.getElementById('f_designerName').value.trim();
+  const designName=document.getElementById('f_designName').value.trim();
+  if(!designerName||!designName){showToast('Designer name and design name are required.',true);return;}
+  const editing=id?DESIGNS.find(d=>d.id===id):null;
+  const obj={
+    id:id||uid('dsg'),
+    date:document.getElementById('f_date').value||todayISO(),
+    designerName, designName,
+    qty:Number(document.getElementById('f_qty').value)||1,
+    customerId:document.getElementById('f_customerId').value||'',
+    notes:document.getElementById('f_notes').value.trim(),
+    createdAt:editing?editing.createdAt:new Date().toISOString(),
+  };
+  const idx=DESIGNS.findIndex(d=>d.id===id);
+  if(idx>-1) DESIGNS[idx]=obj; else DESIGNS.push(obj);
+  const ok=await setList('dieshop:designs',DESIGNS);
+  if(ok){closeModal();showToast(id?'Entry updated.':'Design logged.');renderAll();}
+}
+async function deleteDesign(id){
+  if(!confirm('Delete this design entry?'))return;
+  DESIGNS=DESIGNS.filter(d=>d.id!==id);
+  const ok=await setList('dieshop:designs',DESIGNS);
+  if(ok){showToast('Entry deleted.');renderAll();}
+}
+
+/* ===================== PAYMENTS ===================== */
+let paymentDate=todayISO(), paymentSearch='';
+function renderPayments(){
+  const el=document.getElementById('sec-payments');
+  if(!READY){el.innerHTML=loadingBlock();return;}
+  let list=PAYMENTS.filter(p=>{
+    const cust=CUSTOMERS.find(x=>x.id===p.customerId);
+    const text=((cust?cust.name:'')+' '+(p.mode||'')).toLowerCase();
+    return (!paymentDate||p.date===paymentDate) && (!paymentSearch||text.includes(paymentSearch.toLowerCase()));
+  }).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  const totalAmt=list.reduce((s,p)=>s+(Number(p.amount)||0),0);
+
+  el.innerHTML=`
+    <div class="section-head">
+      <div><div class="section-title">Payments</div><div class="section-sub">${fmtMoney(totalAmt)} ${paymentDate?'received on '+fmtDateShort(paymentDate):'total received'}</div></div>
+      <button class="btn btn-primary" onclick="openPaymentForm()" ${!CUSTOMERS.length?'disabled title="Add a customer first"':''}>${ICON.plus} Log Payment</button>
+    </div>
+    <div class="toolbar">
+      <input class="date-filter" type="date" value="${paymentDate}" onchange="paymentDate=this.value;renderPayments()" aria-label="Filter by date">
+      <button class="chip-btn ${paymentDate===todayISO()?'on':''}" onclick="paymentDate='${todayISO()}';renderPayments()">Today</button>
+      <button class="chip-btn ${paymentDate===''?'on':''}" onclick="paymentDate='';renderPayments()">All</button>
+      <input class="search-input" id="paymentSearchInput" placeholder="Search customer, mode..." value="${esc(paymentSearch)}" oninput="paymentSearch=this.value;rr(renderPayments)">
+    </div>
+    <div class="data-list" id="paymentsList"></div>
+  `;
+  const listEl=document.getElementById('paymentsList');
+  if(!CUSTOMERS.length){
+    listEl.innerHTML=`<div class="empty-state">${ICON.box}<div class="et">Add a customer first</div><div class="es">Payments are linked to a customer.</div></div>`;
+    return;
+  }
+  if(!list.length){
+    listEl.innerHTML=`<div class="empty-state">${ICON.box}<div class="et">No payments logged${paymentDate?' for this date':''}</div><div class="es">Record who paid and how much.</div><button class="btn btn-primary" onclick="openPaymentForm()">${ICON.plus} Log Payment</button></div>`;
+    return;
+  }
+  listEl.innerHTML=list.map(p=>{
+    const cust=CUSTOMERS.find(x=>x.id===p.customerId);
+    const order=ORDERS.find(o=>o.id===p.orderId);
+    return `
+    <div class="row-card">
+      <div class="row-top">
+        <div>
+          <div class="row-title">${esc(cust?cust.name:'Unknown customer')}</div>
+          <div class="row-sub">${esc(p.mode||'—')}${order?' · '+esc(order.jobNo):''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="plate green">${fmtMoney(p.amount)}</span>
+          <div class="row-actions">
+            <button class="icon-btn" aria-label="Edit payment" onclick="openPaymentForm('${p.id}')">${ICON.edit}</button>
+            <button class="icon-btn" aria-label="Delete payment" onclick="deletePayment('${p.id}')">${ICON.trash}</button>
+          </div>
+        </div>
+      </div>
+      <div class="row-meta"><span><b>Date:</b> ${fmtDate(p.date)}</span></div>
+      ${p.notes?`<div class="row-meta" style="margin-top:4px;">${esc(p.notes)}</div>`:''}
+    </div>`;
+  }).join('');
+}
+function openPaymentForm(id){
+  if(!CUSTOMERS.length){showToast('Add a customer first.',true);return;}
+  const editing=id?PAYMENTS.find(p=>p.id===id):null;
+  document.getElementById('modalTitle').textContent=editing?'Edit Payment':'Log Payment';
+  document.getElementById('modalBody').innerHTML=`
+    <div class="field-row">
+      <div class="field"><label for="f_date">Date</label><input id="f_date" type="date" value="${editing?editing.date:todayISO()}"></div>
+      <div class="field"><label for="f_amount">Amount (₹) *</label><input id="f_amount" type="number" inputmode="decimal" min="0" value="${editing?editing.amount:''}"></div>
+    </div>
+    <div class="field"><label for="f_customerId">Customer *</label><select id="f_customerId">${CUSTOMERS.map(c=>`<option value="${c.id}" ${editing&&editing.customerId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+    <div class="field-row">
+      <div class="field"><label for="f_mode">Mode</label><select id="f_mode">${PAY_MODES.map(m=>`<option value="${m}" ${editing&&editing.mode===m?'selected':''}>${m}</option>`).join('')}</select></div>
+      <div class="field"><label for="f_orderId">Order (optional)</label><select id="f_orderId"><option value="">No order link</option>${ORDERS.map(o=>`<option value="${o.id}" ${editing&&editing.orderId===o.id?'selected':''}>${esc(o.jobNo)}</option>`).join('')}</select></div>
+    </div>
+    <div class="field"><label for="f_notes">Notes</label><textarea id="f_notes">${esc(editing?.notes)}</textarea></div>
+  `;
+  document.getElementById('modalSaveBtn').onclick=()=>savePayment(id);
+  openModal();
+}
+async function savePayment(id){
+  const customerId=document.getElementById('f_customerId').value;
+  const amount=Number(document.getElementById('f_amount').value)||0;
+  if(!customerId||!amount){showToast('Customer and amount are required.',true);return;}
+  const editing=id?PAYMENTS.find(p=>p.id===id):null;
+  const obj={
+    id:id||uid('pay'),
+    date:document.getElementById('f_date').value||todayISO(),
+    customerId, amount,
+    mode:document.getElementById('f_mode').value,
+    orderId:document.getElementById('f_orderId').value||'',
+    notes:document.getElementById('f_notes').value.trim(),
+    createdAt:editing?editing.createdAt:new Date().toISOString(),
+  };
+  const idx=PAYMENTS.findIndex(p=>p.id===id);
+  if(idx>-1) PAYMENTS[idx]=obj; else PAYMENTS.push(obj);
+  const ok=await setList('dieshop:payments',PAYMENTS);
+  if(ok){closeModal();showToast(id?'Payment updated.':'Payment logged.');renderAll();}
+}
+async function deletePayment(id){
+  if(!confirm('Delete this payment record?'))return;
+  PAYMENTS=PAYMENTS.filter(p=>p.id!==id);
+  const ok=await setList('dieshop:payments',PAYMENTS);
+  if(ok){showToast('Payment deleted.');renderAll();}
+}
+
+/* ===================== MAINTENANCE ===================== */
+function renderMaintenance(){
+  const el=document.getElementById('sec-maintenance');
+  if(!READY){el.innerHTML=loadingBlock();return;}
+  const list=[...MAINT].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  el.innerHTML=`
+    <div class="section-head">
+      <div><div class="section-title">Maintenance</div><div class="section-sub">${MAINT.length} service record${MAINT.length===1?'':'s'}</div></div>
+      <button class="btn btn-primary" onclick="openMaintForm()" ${!DIES.length?'disabled title="Add a die first"':''}>${ICON.plus} Log Service</button>
+    </div>
+    <div class="data-list" id="maintList"></div>
+  `;
+  const listEl=document.getElementById('maintList');
+  if(!DIES.length){
+    listEl.innerHTML=`<div class="empty-state">${ICON.box}<div class="et">Add a die first</div><div class="es">Maintenance records are linked to a specific die.</div></div>`;
+    return;
+  }
+  if(!list.length){
+    listEl.innerHTML=`<div class="empty-state">${ICON.box}<div class="et">No service records yet</div><div class="es">Log repairs, sharpening, or scheduled maintenance.</div><button class="btn btn-primary" onclick="openMaintForm()">${ICON.plus} Log Service</button></div>`;
+    return;
+  }
+  const today=todayISO();
+  listEl.innerHTML=list.map(m=>{
+    const die=DIES.find(d=>d.id===m.dieId);
+    const overdue=m.nextService && m.nextService<today;
+    return `
+    <div class="row-card">
+      <div class="row-top">
+        <div>
+          <div class="row-title">${esc(die?die.dieNo+' — '+die.name:'Unknown die')}</div>
+          <div class="row-sub">${esc(m.issue||'Routine service')}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="plate steel">${fmtDate(m.date)}</span>
+          <div class="row-actions">
+            <button class="icon-btn" aria-label="Edit record" onclick="openMaintForm('${m.id}')">${ICON.edit}</button>
+            <button class="icon-btn" aria-label="Delete record" onclick="deleteMaint('${m.id}')">${ICON.trash}</button>
+          </div>
+        </div>
+      </div>
+      <div class="row-meta">
+        ${m.action?`<span><b>Action:</b> ${esc(m.action)}</span>`:''}
+        ${m.cost?`<span><b>Cost:</b> ${fmtMoney(m.cost)}</span>`:''}
+        ${m.nextService?`<span class="${overdue?'overdue':''}"><b>Next due:</b> ${fmtDate(m.nextService)}${overdue?' (overdue)':''}</span>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+function openMaintForm(id){
+  if(!DIES.length){showToast('Add a die first.',true);return;}
+  const editing=id?MAINT.find(m=>m.id===id):null;
+  document.getElementById('modalTitle').textContent=editing?'Edit Service Record':'Log Service';
+  document.getElementById('modalBody').innerHTML=`
+    <div class="field"><label for="f_dieId">Die *</label><select id="f_dieId">${DIES.map(d=>`<option value="${d.id}" ${editing&&editing.dieId===d.id?'selected':''}>${esc(d.dieNo)} — ${esc(d.name)}</option>`).join('')}</select></div>
+    <div class="field-row">
+      <div class="field"><label for="f_date">Service Date</label><input id="f_date" type="date" value="${editing?editing.date:todayISO()}"></div>
+      <div class="field"><label for="f_cost">Cost (₹)</label><input id="f_cost" type="number" inputmode="decimal" min="0" value="${editing?editing.cost:''}"></div>
+    </div>
+    <div class="field"><label for="f_issue">Issue</label><input id="f_issue" value="${esc(editing?.issue)}" placeholder="e.g. Cutting edge worn"></div>
+    <div class="field"><label for="f_action">Action Taken</label><textarea id="f_action">${esc(editing?.action)}</textarea></div>
+    <div class="field"><label for="f_nextService">Next Service Due</label><input id="f_nextService" type="date" value="${esc(editing?.nextService)}"></div>
+    <label class="checkline"><input type="checkbox" id="f_markMaint" ${editing?'':'checked'}> Mark this die's status as "Maintenance"</label>
+  `;
+  document.getElementById('modalSaveBtn').onclick=()=>saveMaint(id);
+  openModal();
+}
+async function saveMaint(id){
+  const dieId=document.getElementById('f_dieId').value;
+  if(!dieId){showToast('Die is required.',true);return;}
+  const date=document.getElementById('f_date').value||todayISO();
+  const old=id?MAINT.find(m=>m.id===id):null;
+  const obj={
+    id:id||uid('mnt'),
+    dieId, date,
+    cost:Number(document.getElementById('f_cost').value)||0,
+    issue:document.getElementById('f_issue').value.trim(),
+    action:document.getElementById('f_action').value.trim(),
+    nextService:document.getElementById('f_nextService').value,
+    createdAt:old?(old.createdAt||todayISO()):todayISO(),
+  };
+  const idx=MAINT.findIndex(m=>m.id===id);
+  if(idx>-1) MAINT[idx]=obj; else MAINT.push(obj);
+
+  const dIdx=DIES.findIndex(d=>d.id===dieId);
+  let dieChanged=false;
+  if(dIdx>-1){
+    if(!DIES[dIdx].lastServiced || date>DIES[dIdx].lastServiced){DIES[dIdx].lastServiced=date;dieChanged=true;}
+    if(document.getElementById('f_markMaint').checked && DIES[dIdx].status!=='Maintenance'){DIES[dIdx].status='Maintenance';dieChanged=true;}
+  }
+  const [ok1,ok2]=await Promise.all([
+    setList('dieshop:maintenance',MAINT),
+    dieChanged?setList('dieshop:dies',DIES):Promise.resolve(true)
+  ]);
+  if(ok1&&ok2){closeModal();showToast(id?'Record updated.':'Service logged.');renderAll();}
+}
+async function deleteMaint(id){
+  if(!confirm('Delete this service record?'))return;
+  MAINT=MAINT.filter(m=>m.id!==id);
+  const ok=await setList('dieshop:maintenance',MAINT);
+  if(ok){showToast('Record deleted.');renderAll();}
+}
+
+/* ===================== MODAL ===================== */
+function openModal(){document.getElementById('modalSaveBtn').style.display='';document.getElementById('overlay').classList.add('open');document.body.style.overflow='hidden';}
+function closeModal(){document.getElementById('overlay').classList.remove('open');document.body.style.overflow='';}
+function handleSave(){} // overridden per-form
+document.getElementById('overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeModal();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+
+
+/* ===================== BYLINES ===================== */
+function fmtStamp(iso){
+  const d=new Date(iso); if(isNaN(d)) return '';
+  return d.toLocaleDateString('en-IN',{day:'2-digit',month:'short'})+', '+d.toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'});
+}
+function addBylines(){
+  document.querySelectorAll('.row-card').forEach(card=>{
+    if(card.querySelector('.byline')) return;
+    const btn=card.querySelector('.icon-btn[onclick^="open"]'); if(!btn) return;
+    const m=/^open(\w+)Form\('([^']+)'\)/.exec(btn.getAttribute('onclick')||''); if(!m) return;
+    const col=FORM_COL[m[1]]; const meta=col&&META[col][m[2]];
+    if(!meta||!meta.by) return;
+    const div=document.createElement('div'); div.className='byline';
+    div.textContent='Entered by '+meta.by+(meta.at?' · '+fmtStamp(meta.at):'');
+    card.appendChild(div);
+  });
+}
+const _renderAll=renderAll;
+renderAll=function(){ _renderAll(); renderTeam(); addBylines(); };
+
+/* ===================== TEAM (owner only) ===================== */
+let TEAM=[];
+async function loadTeam(){
+  if(!isOwner()) return;
+  const {data}=await sb.from('dieshop_profiles').select('*').order('created_at');
+  TEAM=data||[]; renderTeam();
+}
+function renderTeam(){
+  const el=document.getElementById('sec-team');
+  if(!isOwner()){el.innerHTML='';return;}
+  el.innerHTML=`
+    <div class="section-head">
+      <div><div class="section-title">Team</div><div class="section-sub">${TEAM.length} login${TEAM.length===1?'':'s'}</div></div>
+      <button class="btn btn-primary" onclick="openWorkerForm()">${ICON.plus} Add Worker</button>
+    </div>
+    <div class="data-list">${TEAM.map(t=>{
+      const self=ME&&t.user_id===ME.user_id;
+      const dieshopAcct=t.role!=='owner'||true;
+      return `<div class="row-card">
+        <div class="row-top">
+          <div><div class="row-title">${esc(t.display_name)}${self?' (you)':''}</div><div class="row-sub">Username: ${esc(t.username)}</div></div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <span class="plate ${t.role==='owner'?'steel':'gray'}">${esc(t.role)}</span>
+            <span class="plate ${t.active?'green':'red'}">${t.active?'Active':'Disabled'}</span>
+          </div>
+        </div>
+        ${self?'':`<div class="team-actions">
+          <button class="btn btn-ghost btn-sm" onclick="openResetForm('${t.user_id}')">Reset password</button>
+          <button class="btn btn-sm ${t.active?'btn-danger':'btn-ghost'}" onclick="toggleActive('${t.user_id}',${!t.active})">${t.active?'Disable':'Enable'}</button>
+        </div>`}
+      </div>`;}).join('')}</div>
+    <div class="login-hint">Worker apne username aur password se login karega. Disable karne par uska access band ho jata hai, par uski entries rehti hain.</div>`;
+}
+function openWorkerForm(){
+  document.getElementById('modalTitle').textContent='Add Worker';
+  document.getElementById('modalBody').innerHTML=`
+    <div class="field"><label for="w_name">Naam *</label><input id="w_name" placeholder="e.g. Ramesh"></div>
+    <div class="field"><label for="w_user">Username * (small letters/numbers)</label><input id="w_user" autocapitalize="none" autocomplete="off" placeholder="e.g. ramesh"></div>
+    <div class="field"><label for="w_pass">Password * (kam se kam 8)</label><input id="w_pass" type="text" autocomplete="off"></div>
+    <div class="field"><label for="w_role">Role</label><select id="w_role"><option value="worker">Worker</option><option value="owner">Owner</option></select></div>`;
+  openModal();
+  document.getElementById('modalSaveBtn').onclick=saveWorker;
+}
+async function saveWorker(){
+  const name=document.getElementById('w_name').value.trim();
+  const user=document.getElementById('w_user').value.trim().toLowerCase();
+  const pass=document.getElementById('w_pass').value;
+  const role=document.getElementById('w_role').value;
+  if(!name||!user||!pass){showToast('Naam, username aur password zaroori hain.',true);return;}
+  if(!/^[a-z0-9._-]{2,30}$/.test(user)){showToast('Username mein sirf a-z, 0-9, . _ - (2 se 30 akshar).',true);return;}
+  if(pass.length<8){showToast('Password kam se kam 8 akshar ka ho.',true);return;}
+  const {error}=await sb.rpc('dieshop_add_worker',{p_username:user,p_display:name,p_password:pass,p_role:role});
+  if(error){showToast(/duplicate|already|unique/i.test(error.message)?'Ye username pehle se hai.':error.message,true);return;}
+  closeModal(); showToast('Worker add ho gaya.'); loadTeam();
+}
+function openResetForm(uid_){
+  const t=TEAM.find(x=>x.user_id===uid_); if(!t) return;
+  document.getElementById('modalTitle').textContent='Reset Password';
+  document.getElementById('modalBody').innerHTML=`
+    <div class="row-sub">${esc(t.display_name)} (${esc(t.username)})</div>
+    <div class="field"><label for="r_pass">Naya password (kam se kam 8)</label><input id="r_pass" type="text" autocomplete="off"></div>`;
+  openModal();
+  document.getElementById('modalSaveBtn').onclick=async()=>{
+    const pass=document.getElementById('r_pass').value;
+    if(pass.length<8){showToast('Password kam se kam 8 akshar ka ho.',true);return;}
+    const {error}=await sb.rpc('dieshop_set_password',{p_user:uid_,p_password:pass});
+    if(error){showToast(error.message,true);return;}
+    closeModal(); showToast('Password badal gaya.');
+  };
+}
+async function toggleActive(uid_,active){
+  const {error}=await sb.rpc('dieshop_set_active',{p_user:uid_,p_active:active});
+  if(error){showToast(error.message,true);return;}
+  showToast(active?'Enabled.':'Disabled.'); loadTeam();
+}
+
+/* ===================== ACCOUNT ===================== */
+function ownMail(){return ME&&ME.email&&ME.email.toLowerCase().endsWith('@'+MAIL_DOMAIN);}
+function openAccount(){
+  document.getElementById('modalTitle').textContent='Account';
+  document.getElementById('modalBody').innerHTML=`
+    <div><div class="row-title">${esc(ME.display_name)}</div><div class="row-sub">${esc(ME.username)} · ${esc(ME.role)}</div></div>
+    <div class="acct-actions">
+      ${ownMail()?`<button class="btn btn-ghost" onclick="openPasswordForm()">Change password</button>`:''}
+      <button class="btn btn-danger" onclick="logout()">Log out</button>
+    </div>`;
+  openModal();
+  document.getElementById('modalSaveBtn').style.display='none';
+}
+function openPasswordForm(){
+  document.getElementById('modalTitle').textContent='Change Password';
+  document.getElementById('modalBody').innerHTML=`
+    <div class="field"><label for="p_new">Naya password (kam se kam 8)</label><input id="p_new" type="password" autocomplete="new-password"></div>
+    <div class="field"><label for="p_new2">Dobara likhein</label><input id="p_new2" type="password" autocomplete="new-password"></div>`;
+  document.getElementById('modalSaveBtn').style.display='';
+  document.getElementById('modalSaveBtn').onclick=async()=>{
+    const a=document.getElementById('p_new').value, b=document.getElementById('p_new2').value;
+    if(a.length<8){showToast('Password kam se kam 8 akshar ka ho.',true);return;}
+    if(a!==b){showToast('Dono password same nahi hain.',true);return;}
+    const {error}=await sb.auth.updateUser({password:a});
+    if(error){showToast(error.message,true);return;}
+    closeModal(); showToast('Password badal gaya.');
+  };
+}
+async function logout(){
+  try{ await sb.auth.signOut(); }catch(e){}
+  location.reload();
+}
+
+/* ===================== AUTH + INIT ===================== */
+function showLogin(msg){
+  document.body.classList.remove('authed');
+  const e=document.getElementById('loginErr'); e.textContent=msg||''; e.hidden=!msg;
+  const b=document.getElementById('lg_btn'); b.disabled=false; b.textContent='Log in';
+}
+async function enter(user){
+  const {data,error}=await sb.from('dieshop_profiles').select('*').eq('user_id',user.id).maybeSingle();
+  if(error||!data||!data.active){
+    try{ await sb.auth.signOut(); }catch(e){}
+    showLogin(error?'Server se connect nahi ho paya. Dobara try karein.':'Is account ko die shop ka access nahi hai.');
+    return;
+  }
+  ME=Object.assign({},data,{email:user.email});
+  document.getElementById('userBtn').textContent=ME.display_name;
+  document.body.classList.add('authed');
+  if(activeTab==='team'&&!isOwner()) activeTab='dashboard';
+  renderTabs();
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.getElementById('sec-'+activeTab).classList.add('active');
+  loadTeam();
+  startData();
+}
+document.getElementById('loginForm').addEventListener('submit',async ev=>{
+  ev.preventDefault();
+  const u=document.getElementById('lg_user').value.trim();
+  const p=document.getElementById('lg_pass').value;
+  if(!u||!p) return;
+  const email=u.includes('@')?u:u.toLowerCase()+'@'+MAIL_DOMAIN;
+  const b=document.getElementById('lg_btn'); b.disabled=true; b.textContent='Logging in…';
+  const {data,error}=await sb.auth.signInWithPassword({email,password:p});
+  if(error||!data.user){ showLogin(/invalid/i.test((error&&error.message)||'')?'Username ya password galat hai.':'Login nahi ho paya. Internet check karein.'); return; }
+  document.getElementById('lg_pass').value='';
+  enter(data.user);
+});
+async function init(){
+  const {data}=await sb.auth.getSession();
+  if(data&&data.session&&data.session.user) enter(data.session.user);
+  else showLogin('');
+}
+init();
+
+</script>
+</body>
+</html>
