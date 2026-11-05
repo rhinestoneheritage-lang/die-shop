@@ -382,7 +382,7 @@ const TABS=[
   {id:'cutting',label:'Cutting Log',icon:'cutting'},
   {id:'designs',label:'Designs',icon:'design'},
   {id:'payments',label:'Payments',icon:'payments'},
-  {id:'customers',label:'Customers',icon:'customers'},
+  {id:'customers',label:'Parties',icon:'customers'},
   {id:'maintenance',label:'Maintenance',icon:'maintenance'},
   {id:'team',label:'Team',icon:'customers'},
 ];
@@ -437,6 +437,15 @@ const FORM_COL={Die:'dies',Customer:'customers',Order:'orders',Maint:'maintenanc
 let ME=null, READY=false, slow=false, subErr='', writing=0, CHAN=null, POLL=null;
 const LAST={}, META={};
 COLS.forEach(c=>{LAST[c]={};META[c]={};});
+/* Parties and payments are real tables (not JSON records) so balances and reports stay exact. */
+const TABLES={
+  customers:{table:'dieshop_parties',
+    fromRow:r=>({id:r.id,partyNo:r.party_no,name:r.name,category:r.category,contact:r.contact,phone:r.phone,email:r.email,address:r.address,gstin:r.gstin,openingBalance:Number(r.opening_balance)||0,discountType:r.discount_type,discountValue:Number(r.discount_value)||0,notes:r.notes,createdAt:r.created_at}),
+    toRow:o=>({id:o.id,name:o.name,category:o.category||'regular',contact:o.contact||'',phone:o.phone||'',email:o.email||'',address:o.address||'',gstin:o.gstin||'',opening_balance:Number(o.openingBalance)||0,discount_type:o.discountType||'percent',discount_value:Number(o.discountValue)||0,notes:o.notes||''})},
+  payments:{table:'dieshop_payments',
+    fromRow:r=>({id:r.id,customerId:r.party_id,date:r.pay_date,amount:Number(r.amount)||0,mode:r.mode,orderId:r.order_ref,notes:r.notes,createdAt:r.created_at}),
+    toRow:o=>({id:o.id,party_id:o.customerId,pay_date:o.date,amount:Number(o.amount)||0,mode:o.mode||'Cash',order_ref:o.orderId||'',notes:o.notes||''})}
+};
 
 function colName(key){return key.replace('dieshop:','');}
 function getArr(col){return {dies:DIES,customers:CUSTOMERS,orders:ORDERS,maintenance:MAINT,cutting:CUTTING,designs:DESIGNS,payments:PAYMENTS}[col];}
@@ -448,6 +457,20 @@ function assign(col,arr){
 function isOwner(){return !!ME&&ME.role==='owner';}
 
 async function fetchCol(col){
+  const T=TABLES[col];
+  if(T){
+    const rows=[];
+    for(let from=0;;from+=1000){
+      const {data,error}=await sb.from(T.table).select('*').order('id').range(from,from+999);
+      if(error) throw error;
+      rows.push(...data);
+      if(data.length<1000) break;
+    }
+    const m={},mt={},arr=[];
+    rows.forEach(r=>{const o=T.fromRow(r);arr.push(o);m[o.id]=JSON.stringify(o);mt[o.id]={by:r.updated_by_name,at:r.updated_at};});
+    LAST[col]=m;META[col]=mt;assign(col,arr);
+    return;
+  }
   const rows=[];
   for(let from=0;;from+=1000){
     const {data,error}=await sb.from('dieshop_records').select('id,data,updated_at,updated_by_name').eq('collection',col).order('id').range(from,from+999);
@@ -462,6 +485,20 @@ async function fetchCol(col){
 async function refreshAll(){
   if(document.hidden||writing>0||!ME) return;
   try{ await Promise.all(COLS.map(fetchCol)); subErr=''; updateStatus(); scheduleRender(); }catch(e){}
+}
+function applyTableChange(col,p){
+  const T=TABLES[col];
+  if(p.eventType==='DELETE'){
+    const id=p.old.id; delete LAST[col][id]; delete META[col][id];
+    assign(col,getArr(col).filter(o=>o.id!==id));
+  }else{
+    const r=p.new, o=T.fromRow(r);
+    LAST[col][o.id]=JSON.stringify(o); META[col][o.id]={by:r.updated_by_name,at:r.updated_at};
+    const arr=getArr(col).slice(); const i=arr.findIndex(x=>x.id===o.id);
+    if(i>-1) arr[i]=o; else arr.push(o);
+    assign(col,arr);
+  }
+  scheduleRender();
 }
 function applyChange(p){
   const col=(p.new&&p.new.collection)||(p.old&&p.old.collection);
@@ -486,6 +523,8 @@ async function startData(){
   clearTimeout(slowTimer); slow=false;
   updateStatus(); renderAll();
   CHAN=sb.channel('dieshop-rt').on('postgres_changes',{event:'*',schema:'public',table:'dieshop_records'},applyChange)
+    .on('postgres_changes',{event:'*',schema:'public',table:'dieshop_parties'},p=>applyTableChange('customers',p))
+    .on('postgres_changes',{event:'*',schema:'public',table:'dieshop_payments'},p=>applyTableChange('payments',p))
     .subscribe(st=>{ /* polling below covers any gap */ });
   POLL=setInterval(refreshAll,60000);
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refreshAll(); });
@@ -495,6 +534,8 @@ async function startData(){
 /* Write only what changed: new or edited records are saved, removed ones deleted. */
 async function setList(key,list){
   const col=colName(key);
+  const T=TABLES[col];
+  const tbl=T?T.table:'dieshop_records';
   const last=LAST[col];
   const ids=new Set(list.map(o=>o.id));
   const toSet=[];
@@ -504,18 +545,20 @@ async function setList(key,list){
   try{
     for(let i=0;i<toSet.length;i+=200){
       const chunk=toSet.slice(i,i+200);
-      const {error}=await sb.from('dieshop_records').upsert(chunk.map(([id,s])=>({collection:col,id,data:JSON.parse(s)})),{onConflict:'collection,id'});
+      const {error}=T?await sb.from(tbl).upsert(chunk.map(([id,s])=>T.toRow(JSON.parse(s))),{onConflict:'id'})
+        :await sb.from(tbl).upsert(chunk.map(([id,s])=>({collection:col,id,data:JSON.parse(s)})),{onConflict:'collection,id'});
       if(error) throw error;
       chunk.forEach(([id,s])=>{last[id]=s;});
     }
     for(let i=0;i<toDelete.length;i+=200){
       const chunk=toDelete.slice(i,i+200);
-      const {error}=await sb.from('dieshop_records').delete().eq('collection',col).in('id',chunk);
+      const {error}=T?await sb.from(tbl).delete().in('id',chunk):await sb.from(tbl).delete().eq('collection',col).in('id',chunk);
       if(error) throw error;
       chunk.forEach(id=>{delete last[id];delete META[col][id];});
     }
     return true;
   }catch(e){
+    if(e&&e.code==='23503'){showToast("Is party ki payments hain, pehle wo hatao.",true);fetchCol(col).then(scheduleRender).catch(()=>{});return false;}
     showToast((e&&e.message&&/JWT|expired|permission|policy/i.test(e.message))?"Save nahi hua. Dobara login karein.":"Save nahi hua. Internet check karke dobara try karein.",true);
     fetchCol(col).then(scheduleRender).catch(()=>{});
     return false;
@@ -594,6 +637,7 @@ function renderDashboard(){
   const inMaint=DIES.filter(d=>d.status==='Maintenance').length;
   const activeOrders=ORDERS.filter(o=>o.status==='Pending'||o.status==='In Production').length;
   const totalCustomers=CUSTOMERS.length;
+  const outstanding=CUSTOMERS.reduce((s,c)=>s+Math.max(0,partyBalance(c)),0);
   const revenue=ORDERS.filter(o=>o.status==='Completed'||o.status==='Delivered')
     .reduce((s,o)=>s+(Number(o.qtyOrdered)||0)*(Number(o.rate)||0),0);
 
@@ -668,7 +712,8 @@ function renderDashboard(){
       <div class="stat-plate"><div class="num">${available}</div><div class="lbl">Available</div></div>
       <div class="stat-plate"><div class="num">${inMaint}</div><div class="lbl">In Maintenance</div></div>
       <div class="stat-plate"><div class="num">${activeOrders}</div><div class="lbl">Active Orders</div></div>
-      <div class="stat-plate"><div class="num">${totalCustomers}</div><div class="lbl">Customers</div></div>
+      <div class="stat-plate"><div class="num">${totalCustomers}</div><div class="lbl">Parties</div></div>
+      <div class="stat-plate accent"><div class="num">${fmtMoney(outstanding)}</div><div class="lbl">Party Outstanding</div></div>
       <div class="stat-plate"><div class="num">${fmtMoney(revenue)}</div><div class="lbl">Revenue (Completed)</div></div>
     </div>
 
@@ -799,62 +844,112 @@ async function deleteDie(id){
   if(ok){showToast('Die deleted.');renderAll();}
 }
 
-/* ===================== CUSTOMERS ===================== */
-let custSearch='';
+/* ===================== PARTIES (Party Master + ledger) ===================== */
+const CAT=[{v:'regular',l:'Regular Party',c:'steel'},{v:'walkin',l:'Walk-in',c:'gray'},{v:'related',l:'Related Party',c:'amber'}];
+function catPlate(v){const m=CAT.find(x=>x.v===v)||CAT[0];return `<span class="plate ${m.c}">${m.l}</span>`;}
+function partyReceived(id){return PAYMENTS.filter(p=>p.customerId===id).reduce((s,p)=>s+(Number(p.amount)||0),0);}
+/* Outstanding = opening + billed - received. Billed is 0 until invoicing arrives in Phase 5. */
+function partyBalance(c){return Math.round(((Number(c.openingBalance)||0)-partyReceived(c.id))*100)/100;}
+function balHtml(b){
+  if(b>0) return `<span class="overdue"><b>Baaki:</b> ${fmtMoney(b)}</span>`;
+  if(b<0) return `<span style="color:var(--green)"><b>Advance:</b> ${fmtMoney(-b)}</span>`;
+  return `<span><b>Baaki:</b> ₹0</span>`;
+}
+let custSearch='', custCat='';
 function renderCustomers(){
   const el=document.getElementById('sec-customers');
   if(!READY){el.innerHTML=loadingBlock();return;}
-  let list=CUSTOMERS.filter(c=>!custSearch||(c.name+' '+(c.phone||'')+' '+(c.email||'')).toLowerCase().includes(custSearch.toLowerCase()))
+  const q=custSearch.toLowerCase();
+  let list=CUSTOMERS.filter(c=>(!custCat||c.category===custCat)&&(!q||(c.name+' '+(c.partyNo||'')+' '+(c.phone||'')+' '+(c.gstin||'')).toLowerCase().includes(q)))
     .sort((a,b)=>a.name.localeCompare(b.name));
+  const totalOut=CUSTOMERS.reduce((s,c)=>s+Math.max(0,partyBalance(c)),0);
   el.innerHTML=`
     <div class="section-head">
-      <div><div class="section-title">Customers</div><div class="section-sub">${CUSTOMERS.length} customer${CUSTOMERS.length===1?'':'s'}</div></div>
-      <button class="btn btn-primary" onclick="openCustomerForm()">${ICON.plus} Add Customer</button>
+      <div><div class="section-title">Parties</div><div class="section-sub">${CUSTOMERS.length} part${CUSTOMERS.length===1?'y':'ies'} · baaki ${fmtMoney(totalOut)}</div></div>
+      <button class="btn btn-primary" onclick="openCustomerForm()">${ICON.plus} Add Party</button>
     </div>
     <div class="toolbar">
-      <input class="search-input" id="custSearchInput" placeholder="Search by name, phone, email..." value="${esc(custSearch)}" oninput="custSearch=this.value;rr(renderCustomers)">
+      <input class="search-input" id="custSearchInput" placeholder="Naam, party no, phone, GST..." value="${esc(custSearch)}" oninput="custSearch=this.value;rr(renderCustomers)">
+      <select class="filter-select" onchange="custCat=this.value;renderCustomers()">
+        <option value="">Sab category</option>
+        ${CAT.map(c=>`<option value="${c.v}" ${custCat===c.v?'selected':''}>${c.l}</option>`).join('')}
+      </select>
     </div>
     <div class="data-list" id="custList"></div>
   `;
   const listEl=document.getElementById('custList');
   if(!list.length){
-    listEl.innerHTML=`<div class="empty-state">${ICON.box}<div class="et">${CUSTOMERS.length?'No matching customers':'No customers yet'}</div><div class="es">${CUSTOMERS.length?'Try a different search.':'Add a customer to start linking orders.'}</div>${!CUSTOMERS.length?`<button class="btn btn-primary" onclick="openCustomerForm()">${ICON.plus} Add Customer</button>`:''}</div>`;
+    listEl.innerHTML=`<div class="empty-state">${ICON.box}<div class="et">${CUSTOMERS.length?'Koi party nahi mili':'Abhi koi party nahi'}</div><div class="es">${CUSTOMERS.length?'Dusra search ya filter try karein.':'Pehli party jodo, phir uske order aur payments yahin se dikhenge.'}</div>${!CUSTOMERS.length?`<button class="btn btn-primary" onclick="openCustomerForm()">${ICON.plus} Add Party</button>`:''}</div>`;
     return;
   }
   listEl.innerHTML=list.map(c=>{
     const orderCount=ORDERS.filter(o=>o.customerId===c.id).length;
+    const disc=Number(c.discountValue)>0?(c.discountType==='amount'?fmtMoney(c.discountValue):c.discountValue+'%'):'';
     return `
     <div class="row-card">
       <div class="row-top">
         <div>
           <div class="row-title">${esc(c.name)}</div>
-          <div class="row-sub">${esc(c.contact||'')}</div>
+          <div class="row-sub">${esc(c.partyNo||'')}${c.contact?' · '+esc(c.contact):''}</div>
         </div>
-        <div class="row-actions">
-          <button class="icon-btn" aria-label="Edit customer" onclick="openCustomerForm('${c.id}')">${ICON.edit}</button>
-          <button class="icon-btn" aria-label="Delete customer" onclick="deleteCustomer('${c.id}')">${ICON.trash}</button>
+        <div style="display:flex;align-items:center;gap:6px;">
+          ${catPlate(c.category)}
+          <div class="row-actions">
+            <button class="icon-btn" aria-label="Edit party" onclick="openCustomerForm('${c.id}')">${ICON.edit}</button>
+            <button class="icon-btn" aria-label="Delete party" onclick="deleteCustomer('${c.id}')">${ICON.trash}</button>
+          </div>
         </div>
       </div>
       <div class="row-meta">
+        ${balHtml(partyBalance(c))}
         ${c.phone?`<span><b>Phone:</b> ${esc(c.phone)}</span>`:''}
-        ${c.email?`<span><b>Email:</b> ${esc(c.email)}</span>`:''}
+        ${c.gstin?`<span><b>GST:</b> ${esc(c.gstin)}</span>`:''}
+        ${disc?`<span><b>Discount:</b> ${esc(disc)}</span>`:''}
         <span><b>Orders:</b> ${orderCount}</span>
       </div>
       ${c.address?`<div class="row-meta" style="margin-top:4px;">${esc(c.address)}</div>`:''}
+      <div class="team-actions"><button class="btn btn-ghost btn-sm" onclick="openLedger('${c.id}')">Ledger / Statement</button></div>
     </div>`;
   }).join('');
 }
+function openLedger(id){
+  const c=CUSTOMERS.find(x=>x.id===id); if(!c) return;
+  const pays=PAYMENTS.filter(p=>p.customerId===id).sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.createdAt||'').localeCompare(b.createdAt||''));
+  let run=Number(c.openingBalance)||0;
+  const rows=pays.map(p=>{run=Math.round((run-(Number(p.amount)||0))*100)/100;return `<li><span class="mtitle">${fmtDate(p.date)} · ${esc(p.mode||'')}<br><span style="font-weight:400;color:var(--ink-soft)">Jama ${fmtMoney(p.amount)}</span></span><span class="msub" style="${run>0?'color:var(--red)':'color:var(--green)'}">${run>=0?'Baaki ':'Advance '}${fmtMoney(Math.abs(run))}</span></li>`;}).join('');
+  document.getElementById('modalTitle').textContent='Ledger';
+  document.getElementById('modalBody').innerHTML=`
+    <div><div class="row-title">${esc(c.name)}</div><div class="row-sub">${esc(c.partyNo||'')} · ${CAT.find(x=>x.v===c.category)?.l||''}</div></div>
+    <div class="plate-grid" style="margin:0;">
+      <div class="stat-plate"><div class="num">${fmtMoney(c.openingBalance)}</div><div class="lbl">Opening</div></div>
+      <div class="stat-plate"><div class="num">${fmtMoney(partyReceived(id))}</div><div class="lbl">Mila</div></div>
+      <div class="stat-plate accent"><div class="num">${fmtMoney(partyBalance(c))}</div><div class="lbl">Outstanding</div></div>
+    </div>
+    ${rows?`<ul class="mini-list">${rows}</ul>`:`<div class="empty-mini">Abhi koi payment nahi.</div>`}
+    <div class="login-hint">Invoice (bill) abhi system mein nahi judi hain. Wo aage ke phase mein aayengi, tab ye ledger billed amount bhi dikhayega.</div>`;
+  openModal();
+  document.getElementById('modalSaveBtn').style.display='none';
+}
 function openCustomerForm(id){
   const editing=id?CUSTOMERS.find(c=>c.id===id):null;
-  document.getElementById('modalTitle').textContent=editing?'Edit Customer':'Add Customer';
+  document.getElementById('modalTitle').textContent=editing?'Edit Party':'Add Party';
   document.getElementById('modalBody').innerHTML=`
     <div class="field"><label for="f_name">Name / Company *</label><input id="f_name" value="${esc(editing?.name)}" placeholder="e.g. Suresh Auto Components"></div>
-    <div class="field"><label for="f_contact">Contact Person</label><input id="f_contact" value="${esc(editing?.contact)}" placeholder="e.g. Suresh Patel"></div>
     <div class="field-row">
-      <div class="field"><label for="f_phone">Phone</label><input id="f_phone" value="${esc(editing?.phone)}" placeholder="e.g. 98765 43210"></div>
+      <div class="field"><label for="f_category">Category</label><select id="f_category">${CAT.map(c=>`<option value="${c.v}" ${(editing?editing.category:'regular')===c.v?'selected':''}>${c.l}</option>`).join('')}</select></div>
+      <div class="field"><label for="f_contact">Contact Person</label><input id="f_contact" value="${esc(editing?.contact)}"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label for="f_phone">Phone</label><input id="f_phone" type="tel" inputmode="tel" value="${esc(editing?.phone)}" placeholder="98765 43210"></div>
       <div class="field"><label for="f_email">Email</label><input id="f_email" value="${esc(editing?.email)}" placeholder="optional"></div>
     </div>
     <div class="field"><label for="f_address">Address</label><textarea id="f_address">${esc(editing?.address)}</textarea></div>
+    <div class="field"><label for="f_gstin">GST No (optional)</label><input id="f_gstin" value="${esc(editing?.gstin)}" autocapitalize="characters"></div>
+    <div class="field"><label for="f_opening">Opening balance (₹)</label><input id="f_opening" type="number" inputmode="decimal" step="any" value="${editing?editing.openingBalance:0}"><div class="login-hint" style="margin-top:4px;">Party ne aapko dena hai to plus (+). Aapne party ko dena hai (advance) to minus (−).</div></div>
+    <div class="field-row">
+      <div class="field"><label for="f_dtype">Discount type</label><select id="f_dtype"><option value="percent" ${editing&&editing.discountType==='percent'?'selected':''}>Percent (%)</option><option value="amount" ${editing&&editing.discountType==='amount'?'selected':''}>Amount (₹)</option></select></div>
+      <div class="field"><label for="f_dvalue">Discount</label><input id="f_dvalue" type="number" inputmode="decimal" min="0" step="any" value="${editing?editing.discountValue:0}"></div>
+    </div>
     <div class="field"><label for="f_notes">Notes</label><textarea id="f_notes">${esc(editing?.notes)}</textarea></div>
   `;
   document.getElementById('modalSaveBtn').onclick=()=>saveCustomer(id);
@@ -862,28 +957,50 @@ function openCustomerForm(id){
 }
 async function saveCustomer(id){
   const name=document.getElementById('f_name').value.trim();
-  if(!name){showToast('Name is required.',true);return;}
+  if(!name){showToast('Name zaroori hai.',true);return;}
+  const dv=Number(document.getElementById('f_dvalue').value)||0;
+  if(dv<0){showToast('Discount minus nahi ho sakta.',true);return;}
+  const dt=document.getElementById('f_dtype').value;
+  if(dt==='percent'&&dv>100){showToast('Discount 100% se zyada nahi ho sakta.',true);return;}
   const old=id?CUSTOMERS.find(c=>c.id===id):null;
-  const obj={
-    id:id||uid('cust'),
+  const obj=Object.assign({},old||{},{
+    id:id||crypto.randomUUID(),
     name,
+    category:document.getElementById('f_category').value,
     contact:document.getElementById('f_contact').value.trim(),
     phone:document.getElementById('f_phone').value.trim(),
     email:document.getElementById('f_email').value.trim(),
     address:document.getElementById('f_address').value.trim(),
+    gstin:document.getElementById('f_gstin').value.trim().toUpperCase(),
+    openingBalance:Number(document.getElementById('f_opening').value)||0,
+    discountType:dt, discountValue:dv,
     notes:document.getElementById('f_notes').value.trim(),
-    createdAt:old?(old.createdAt||todayISO()):todayISO(),
-  };
+  });
   const idx=CUSTOMERS.findIndex(c=>c.id===id);
   if(idx>-1) CUSTOMERS[idx]=obj; else CUSTOMERS.push(obj);
   const ok=await setList('dieshop:customers',CUSTOMERS);
-  if(ok){closeModal();showToast(id?'Customer updated.':'Customer added.');renderAll();}
+  if(ok){closeModal();showToast(id?'Party update ho gayi.':'Party add ho gayi.');renderAll();}
 }
 async function deleteCustomer(id){
-  if(!confirm('Delete this customer? Existing records will keep showing "Unknown customer".'))return;
+  const used=PAYMENTS.some(x=>x.customerId===id)||ORDERS.some(x=>x.customerId===id)||CUTTING.some(x=>x.customerId===id)||DESIGNS.some(x=>x.customerId===id);
+  if(used){showToast('Is party ke orders ya payments hain, isliye delete nahi ho sakti.',true);return;}
+  if(!confirm('Is party ko delete karein?'))return;
   CUSTOMERS=CUSTOMERS.filter(c=>c.id!==id);
   const ok=await setList('dieshop:customers',CUSTOMERS);
-  if(ok){showToast('Customer deleted.');renderAll();}
+  if(ok){showToast('Party delete ho gayi.');renderAll();}
+}
+/* Quick-add from inside any form that has a party picker. */
+async function quickParty(ev){
+  ev.preventDefault();
+  const sel=document.getElementById('f_customerId'); if(!sel) return;
+  const name=(prompt('Party / customer ka naam?')||'').trim(); if(!name) return;
+  const walk=confirm('Walk-in customer hai?\nOK = Walk-in, Cancel = Regular party');
+  const obj={id:crypto.randomUUID(),name,category:walk?'walkin':'regular',contact:'',phone:'',email:'',address:'',gstin:'',openingBalance:0,discountType:'percent',discountValue:0,notes:''};
+  CUSTOMERS.push(obj);
+  const ok=await setList('dieshop:customers',CUSTOMERS);
+  if(!ok){CUSTOMERS=CUSTOMERS.filter(c=>c.id!==obj.id);return;}
+  const o=document.createElement('option'); o.value=obj.id; o.textContent=name; sel.appendChild(o); sel.value=obj.id;
+  showToast('Party add ho gayi.');
 }
 
 /* ===================== ORDERS ===================== */
@@ -963,7 +1080,7 @@ function openOrderForm(id){
       <div class="field"><label for="f_jobNo">Job No</label><input id="f_jobNo" value="${esc(editing?editing.jobNo:nextJobNo())}" ${editing?'':'readonly'}></div>
       <div class="field"><label for="f_status">Status</label><select id="f_status">${ORDER_STATUSES.map(s=>`<option value="${s.v}" ${editing&&editing.status===s.v?'selected':''}>${s.v}</option>`).join('')}</select></div>
     </div>
-    <div class="field"><label for="f_customerId">Customer *</label><select id="f_customerId">${CUSTOMERS.map(c=>`<option value="${c.id}" ${editing&&editing.customerId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+    <div class="field"><label for="f_customerId">Customer * <a href="#" onclick="quickParty(event)" style="text-transform:none;letter-spacing:0;color:var(--accent-dark);margin-left:6px;">+ nayi party</a></label><select id="f_customerId">${CUSTOMERS.map(c=>`<option value="${c.id}" ${editing&&editing.customerId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
     <div class="field"><label for="f_dieId">Die *</label><select id="f_dieId">${DIES.map(d=>`<option value="${d.id}" ${editing&&editing.dieId===d.id?'selected':''}>${esc(d.dieNo)} — ${esc(d.name)}</option>`).join('')}</select></div>
     <div class="field-row">
       <div class="field"><label for="f_qtyOrdered">Qty Ordered</label><input id="f_qtyOrdered" type="number" inputmode="numeric" min="0" value="${editing?editing.qtyOrdered:''}"></div>
@@ -1077,7 +1194,7 @@ function openCuttingForm(id){
       <div class="field"><label for="f_qty">Qty Cut *</label><input id="f_qty" type="number" inputmode="numeric" min="0" value="${editing?editing.qty:''}"></div>
     </div>
     <div class="field"><label for="f_dieId">Die *</label><select id="f_dieId">${DIES.map(d=>`<option value="${d.id}" ${editing&&editing.dieId===d.id?'selected':''}>${esc(d.dieNo)} — ${esc(d.name)}</option>`).join('')}</select></div>
-    <div class="field"><label for="f_customerId">Customer *</label><select id="f_customerId">${CUSTOMERS.map(c=>`<option value="${c.id}" ${editing&&editing.customerId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+    <div class="field"><label for="f_customerId">Customer * <a href="#" onclick="quickParty(event)" style="text-transform:none;letter-spacing:0;color:var(--accent-dark);margin-left:6px;">+ nayi party</a></label><select id="f_customerId">${CUSTOMERS.map(c=>`<option value="${c.id}" ${editing&&editing.customerId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
     <div class="field"><label for="f_orderId">Order (optional, updates job progress)</label><select id="f_orderId"><option value="">No order link</option>${ORDERS.map(o=>{const cu=CUSTOMERS.find(x=>x.id===o.customerId);return `<option value="${o.id}" ${editing&&editing.orderId===o.id?'selected':''}>${esc(o.jobNo)} — ${esc(cu?cu.name:'')}</option>`;}).join('')}</select></div>
     <div class="field"><label for="f_operator">Operator / Worker</label><input id="f_operator" list="operatorList" value="${esc(editing?.operator)}" placeholder="e.g. Ramesh"><datalist id="operatorList">${uniqueVals(CUTTING,'operator').map(v=>`<option value="${esc(v)}">`).join('')}</datalist></div>
     <div class="field"><label for="f_notes">Notes</label><textarea id="f_notes">${esc(editing?.notes)}</textarea></div>
@@ -1205,7 +1322,7 @@ function openDesignForm(id){
     </div>
     <div class="field"><label for="f_designerName">Designer Name *</label><input id="f_designerName" list="designerList" value="${esc(editing?.designerName)}" placeholder="e.g. Pooja"><datalist id="designerList">${uniqueVals(DESIGNS,'designerName').map(v=>`<option value="${esc(v)}">`).join('')}</datalist></div>
     <div class="field"><label for="f_designName">Design Name *</label><input id="f_designName" value="${esc(editing?.designName)}" placeholder="e.g. Bracket v3 layout"></div>
-    <div class="field"><label for="f_customerId">Customer</label><select id="f_customerId"><option value="">No customer link</option>${CUSTOMERS.map(c=>`<option value="${c.id}" ${editing&&editing.customerId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+    <div class="field"><label for="f_customerId">Customer <a href="#" onclick="quickParty(event)" style="text-transform:none;letter-spacing:0;color:var(--accent-dark);margin-left:6px;">+ nayi party</a></label><select id="f_customerId"><option value="">No customer link</option>${CUSTOMERS.map(c=>`<option value="${c.id}" ${editing&&editing.customerId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
     <div class="field"><label for="f_notes">Notes</label><textarea id="f_notes">${esc(editing?.notes)}</textarea></div>
   `;
   document.getElementById('modalSaveBtn').onclick=()=>saveDesign(id);
@@ -1303,7 +1420,7 @@ function openPaymentForm(id){
       <div class="field"><label for="f_date">Date</label><input id="f_date" type="date" value="${editing?editing.date:todayISO()}"></div>
       <div class="field"><label for="f_amount">Amount (₹) *</label><input id="f_amount" type="number" inputmode="decimal" min="0" value="${editing?editing.amount:''}"></div>
     </div>
-    <div class="field"><label for="f_customerId">Customer *</label><select id="f_customerId">${CUSTOMERS.map(c=>`<option value="${c.id}" ${editing&&editing.customerId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+    <div class="field"><label for="f_customerId">Customer * <a href="#" onclick="quickParty(event)" style="text-transform:none;letter-spacing:0;color:var(--accent-dark);margin-left:6px;">+ nayi party</a></label><select id="f_customerId">${CUSTOMERS.map(c=>`<option value="${c.id}" ${editing&&editing.customerId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
     <div class="field-row">
       <div class="field"><label for="f_mode">Mode</label><select id="f_mode">${PAY_MODES.map(m=>`<option value="${m}" ${editing&&editing.mode===m?'selected':''}>${m}</option>`).join('')}</select></div>
       <div class="field"><label for="f_orderId">Order (optional)</label><select id="f_orderId"><option value="">No order link</option>${ORDERS.map(o=>`<option value="${o.id}" ${editing&&editing.orderId===o.id?'selected':''}>${esc(o.jobNo)}</option>`).join('')}</select></div>
@@ -1319,7 +1436,7 @@ async function savePayment(id){
   if(!customerId||!amount){showToast('Customer and amount are required.',true);return;}
   const editing=id?PAYMENTS.find(p=>p.id===id):null;
   const obj={
-    id:id||uid('pay'),
+    id:id||crypto.randomUUID(),
     date:document.getElementById('f_date').value||todayISO(),
     customerId, amount,
     mode:document.getElementById('f_mode').value,
