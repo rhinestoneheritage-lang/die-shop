@@ -262,6 +262,24 @@
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
   #toast.err{background:var(--red);color:#fff;}
 
+  .thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px;}
+  .thumb{width:64px;height:64px;object-fit:cover;border-radius:4px;border:1px solid var(--border);background:var(--surface-alt);cursor:pointer;display:block;}
+  .thumb-wrap{position:relative;}
+  .thumb-x{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:none;background:var(--red);color:#fff;font-size:15px;line-height:1;cursor:pointer;padding:0;}
+  .thumb-more{width:64px;height:64px;border-radius:4px;border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--ink-soft);font-weight:600;cursor:pointer;}
+  .gal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin-bottom:18px;}
+  .gal-grid .thumb{width:100%;height:auto;aspect-ratio:1;}
+  .item-box{border:1px solid var(--border);border-radius:var(--radius);padding:12px;background:var(--surface-alt);display:flex;flex-direction:column;gap:10px;}
+  .item-box .field input,.item-box .field select{background:var(--surface);}
+  .filebtn{position:relative;overflow:hidden;}
+  .filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer;font-size:0;}
+  #viewer{position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:80;display:none;align-items:center;justify-content:center;flex-direction:column;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);}
+  #viewer.open{display:flex;}
+  #vwImg{max-width:100%;max-height:78vh;object-fit:contain;}
+  #vwCap{color:#fff;font-size:13px;padding:12px 56px 0;text-align:center;line-height:1.5;}
+  .vw-btn{position:absolute;background:rgba(255,255,255,.14);color:#fff;border:none;width:44px;height:44px;border-radius:50%;font-size:26px;cursor:pointer;line-height:1;}
+  .vw-close{top:calc(12px + env(safe-area-inset-top,0px));right:12px;}
+  .vw-prev{left:8px;top:50%;} .vw-next{right:8px;top:50%;}
   ::selection{background:var(--accent-bg);}
 
   @media (max-width:380px){
@@ -328,7 +346,8 @@
   <div class="status" id="statusBar" hidden></div>
   <section class="section" id="sec-dashboard"></section>
   <section class="section" id="sec-dies"></section>
-  <section class="section" id="sec-orders"></section>
+  <section class="section" id="sec-jobs"></section>
+  <section class="section" id="sec-gallery"></section>
   <section class="section" id="sec-cutting"></section>
   <section class="section" id="sec-designs"></section>
   <section class="section" id="sec-payments"></section>
@@ -351,6 +370,13 @@
   </div>
 </div>
 
+<div id="viewer" onclick="if(event.target.id==='viewer')closeViewer()">
+  <button class="vw-btn vw-close" onclick="closeViewer()" aria-label="Close">&times;</button>
+  <button class="vw-btn vw-prev" onclick="stepViewer(-1)" aria-label="Previous">&#8249;</button>
+  <img id="vwImg" alt="">
+  <button class="vw-btn vw-next" onclick="stepViewer(1)" aria-label="Next">&#8250;</button>
+  <div id="vwCap"></div>
+</div>
 <div id="toast" role="status" aria-live="polite"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
@@ -378,7 +404,8 @@ try{ const t=localStorage.getItem('dietrack:tab'); if(t) activeTab=t; }catch(e){
 const TABS=[
   {id:'dashboard',label:'Dashboard',icon:'dashboard'},
   {id:'dies',label:'Dies',icon:'dies'},
-  {id:'orders',label:'Orders',icon:'orders'},
+  {id:'jobs',label:'Jobs',icon:'orders'},
+  {id:'gallery',label:'Gallery',icon:'design'},
   {id:'cutting',label:'Cutting Log',icon:'cutting'},
   {id:'designs',label:'Designs',icon:'design'},
   {id:'payments',label:'Payments',icon:'payments'},
@@ -433,7 +460,7 @@ const SB_KEY='sb_publishable_Le2efyGVTixAxEtJF8tK-w_GwncPKy5';
 const MAIL_DOMAIN='dieshop.rhstockandbill.in';
 const sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,storageKey:'dietrack-auth'}});
 const COLS=['dies','customers','orders','maintenance','cutting','designs','payments'];
-const FORM_COL={Die:'dies',Customer:'customers',Order:'orders',Maint:'maintenance',Cutting:'cutting',Design:'designs',Payment:'payments'};
+const FORM_COL={Die:'dies',Customer:'customers',Job:'jobs',Order:'orders',Maint:'maintenance',Cutting:'cutting',Design:'designs',Payment:'payments'};
 let ME=null, READY=false, slow=false, subErr='', writing=0, CHAN=null, POLL=null;
 const LAST={}, META={};
 COLS.forEach(c=>{LAST[c]={};META[c]={};});
@@ -484,7 +511,7 @@ async function fetchCol(col){
 }
 async function refreshAll(){
   if(document.hidden||writing>0||!ME) return;
-  try{ await Promise.all(COLS.map(fetchCol)); subErr=''; updateStatus(); scheduleRender(); }catch(e){}
+  try{ await Promise.all([...COLS.map(fetchCol),fetchJobs(),fetchProfiles()]); subErr=''; updateStatus(); scheduleRender(); }catch(e){}
 }
 function applyTableChange(col,p){
   const T=TABLES[col];
@@ -518,13 +545,16 @@ function applyChange(p){
 async function startData(){
   READY=false; subErr=''; updateStatus(); renderAll();
   const slowTimer=setTimeout(()=>{slow=true;updateStatus();},10000);
-  try{ await Promise.all(COLS.map(fetchCol)); READY=true; }
+  try{ await Promise.all([...COLS.map(fetchCol),fetchJobs(),fetchProfiles()]); READY=true; }
   catch(e){ subErr='load'; READY=true; }
   clearTimeout(slowTimer); slow=false;
   updateStatus(); renderAll();
   CHAN=sb.channel('dieshop-rt').on('postgres_changes',{event:'*',schema:'public',table:'dieshop_records'},applyChange)
     .on('postgres_changes',{event:'*',schema:'public',table:'dieshop_parties'},p=>applyTableChange('customers',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'dieshop_payments'},p=>applyTableChange('payments',p))
+    .on('postgres_changes',{event:'*',schema:'public',table:'dieshop_jobs'},jobsChanged)
+    .on('postgres_changes',{event:'*',schema:'public',table:'dieshop_job_items'},jobsChanged)
+    .on('postgres_changes',{event:'*',schema:'public',table:'dieshop_job_images'},jobsChanged)
     .subscribe(st=>{ /* polling below covers any gap */ });
   POLL=setInterval(refreshAll,60000);
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refreshAll(); });
@@ -619,7 +649,8 @@ function switchTab(id){
 function renderAll(){
   renderDashboard();
   renderDies();
-  renderOrders();
+  renderJobs();
+  renderGallery();
   renderCutting();
   renderDesigns();
   renderPayments();
@@ -635,11 +666,10 @@ function renderDashboard(){
   const totalDies=DIES.length;
   const available=DIES.filter(d=>d.status==='Available').length;
   const inMaint=DIES.filter(d=>d.status==='Maintenance').length;
-  const activeOrders=ORDERS.filter(o=>o.status==='Pending'||o.status==='In Production').length;
+  const activeOrders=JOBS.filter(j=>!['Delivered','Closed'].includes(j.status)).length;
   const totalCustomers=CUSTOMERS.length;
   const outstanding=CUSTOMERS.reduce((s,c)=>s+Math.max(0,partyBalance(c)),0);
-  const revenue=ORDERS.filter(o=>o.status==='Completed'||o.status==='Delivered')
-    .reduce((s,o)=>s+(Number(o.qtyOrdered)||0)*(Number(o.rate)||0),0);
+  const revenue=JOBS.filter(j=>['Delivered','Closed'].includes(j.status)).reduce((s,j)=>s+jobTotals(j).all,0);
 
   const cutToday=CUTTING.filter(c=>c.date===today);
   const dieCutToday=cutToday.reduce((s,c)=>s+(Number(c.qty)||0),0);
@@ -671,11 +701,11 @@ function renderDashboard(){
         <span class="msub ${overdue?'overdue':''}">${overdue?'Overdue · ':'Due '}${fmtDate(m.nextService)}</span></li>`;
     }).join('')}</ul>` : `<div class="empty-mini">No upcoming services scheduled.</div>`;
 
-  const recentOrders=[...ORDERS].sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).slice(0,5);
+  const recentOrders=[...JOBS].sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).slice(0,5);
   const recentHtml=recentOrders.length? `<ul class="mini-list">${recentOrders.map(o=>{
       const cust=CUSTOMERS.find(c=>c.id===o.customerId);
-      return `<li><span class="mtitle">${esc(o.jobNo)} · ${esc(cust?cust.name:'—')}</span><span class="msub">${plateFor(o.status,ORDER_STATUSES)}</span></li>`;
-    }).join('')}</ul>` : `<div class="empty-mini">No orders yet.</div>`;
+      return `<li><span class="mtitle">${esc(o.jobNo)} · ${esc(cust?cust.name:'—')}</span><span class="msub">${plateFor(o.status,JOB_STATUSES)}</span></li>`;
+    }).join('')}</ul>` : `<div class="empty-mini">No jobs yet.</div>`;
 
   function activityList(items,render){
     if(!items.length) return `<div class="empty-mini">Nothing logged today.</div>`;
@@ -711,10 +741,10 @@ function renderDashboard(){
       <div class="stat-plate"><div class="num">${totalDies}</div><div class="lbl">Total Dies</div></div>
       <div class="stat-plate"><div class="num">${available}</div><div class="lbl">Available</div></div>
       <div class="stat-plate"><div class="num">${inMaint}</div><div class="lbl">In Maintenance</div></div>
-      <div class="stat-plate"><div class="num">${activeOrders}</div><div class="lbl">Active Orders</div></div>
+      <div class="stat-plate"><div class="num">${activeOrders}</div><div class="lbl">Open Jobs</div></div>
       <div class="stat-plate"><div class="num">${totalCustomers}</div><div class="lbl">Parties</div></div>
       <div class="stat-plate accent"><div class="num">${fmtMoney(outstanding)}</div><div class="lbl">Party Outstanding</div></div>
-      <div class="stat-plate"><div class="num">${fmtMoney(revenue)}</div><div class="lbl">Revenue (Completed)</div></div>
+      <div class="stat-plate"><div class="num">${fmtMoney(revenue)}</div><div class="lbl">Delivered Job Value</div></div>
     </div>
 
     <div class="card" style="margin-bottom:14px;">
@@ -729,11 +759,11 @@ function renderDashboard(){
     <div class="dash-grid">
       <div style="display:flex;flex-direction:column;gap:14px;">
         <div class="card"><h3>Dies by Status</h3>${statusBars(DIES,DIE_STATUSES,'status')}</div>
-        <div class="card"><h3>Orders by Status</h3>${statusBars(ORDERS,ORDER_STATUSES,'status')}</div>
+        <div class="card"><h3>Jobs by Status</h3>${statusBars(JOBS,JOB_STATUSES,'status')}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:14px;">
         <div class="card"><h3>Upcoming Maintenance</h3>${upcomingHtml}</div>
-        <div class="card"><h3>Recent Orders</h3>${recentHtml}</div>
+        <div class="card"><h3>Recent Jobs</h3>${recentHtml}</div>
       </div>
     </div>
   `;
@@ -883,7 +913,7 @@ function renderCustomers(){
     return;
   }
   listEl.innerHTML=list.map(c=>{
-    const orderCount=ORDERS.filter(o=>o.customerId===c.id).length;
+    const orderCount=JOBS.filter(o=>o.customerId===c.id).length;
     const disc=Number(c.discountValue)>0?(c.discountType==='amount'?fmtMoney(c.discountValue):c.discountValue+'%'):'';
     return `
     <div class="row-card">
@@ -905,7 +935,7 @@ function renderCustomers(){
         ${c.phone?`<span><b>Phone:</b> ${esc(c.phone)}</span>`:''}
         ${c.gstin?`<span><b>GST:</b> ${esc(c.gstin)}</span>`:''}
         ${disc?`<span><b>Discount:</b> ${esc(disc)}</span>`:''}
-        <span><b>Orders:</b> ${orderCount}</span>
+        <span><b>Jobs:</b> ${orderCount}</span>
       </div>
       ${c.address?`<div class="row-meta" style="margin-top:4px;">${esc(c.address)}</div>`:''}
       <div class="team-actions"><button class="btn btn-ghost btn-sm" onclick="openLedger('${c.id}')">Ledger / Statement</button></div>
@@ -982,7 +1012,7 @@ async function saveCustomer(id){
   if(ok){closeModal();showToast(id?'Party update ho gayi.':'Party add ho gayi.');renderAll();}
 }
 async function deleteCustomer(id){
-  const used=PAYMENTS.some(x=>x.customerId===id)||ORDERS.some(x=>x.customerId===id)||CUTTING.some(x=>x.customerId===id)||DESIGNS.some(x=>x.customerId===id);
+  const used=PAYMENTS.some(x=>x.customerId===id)||JOBS.some(x=>x.customerId===id)||CUTTING.some(x=>x.customerId===id)||DESIGNS.some(x=>x.customerId===id);
   if(used){showToast('Is party ke orders ya payments hain, isliye delete nahi ho sakti.',true);return;}
   if(!confirm('Is party ko delete karein?'))return;
   CUSTOMERS=CUSTOMERS.filter(c=>c.id!==id);
@@ -1160,7 +1190,7 @@ function renderCutting(){
   }
   listEl.innerHTML=list.map(c=>{
     const die=DIES.find(d=>d.id===c.dieId), cust=CUSTOMERS.find(x=>x.id===c.customerId);
-    const order=ORDERS.find(o=>o.id===c.orderId);
+    const order=JOBS.find(o=>o.id===c.orderId);
     return `
     <div class="row-card">
       <div class="row-top">
@@ -1195,7 +1225,7 @@ function openCuttingForm(id){
     </div>
     <div class="field"><label for="f_dieId">Die *</label><select id="f_dieId">${DIES.map(d=>`<option value="${d.id}" ${editing&&editing.dieId===d.id?'selected':''}>${esc(d.dieNo)} — ${esc(d.name)}</option>`).join('')}</select></div>
     <div class="field"><label for="f_customerId">Customer * <a href="#" onclick="quickParty(event)" style="text-transform:none;letter-spacing:0;color:var(--accent-dark);margin-left:6px;">+ nayi party</a></label><select id="f_customerId">${CUSTOMERS.map(c=>`<option value="${c.id}" ${editing&&editing.customerId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
-    <div class="field"><label for="f_orderId">Order (optional, updates job progress)</label><select id="f_orderId"><option value="">No order link</option>${ORDERS.map(o=>{const cu=CUSTOMERS.find(x=>x.id===o.customerId);return `<option value="${o.id}" ${editing&&editing.orderId===o.id?'selected':''}>${esc(o.jobNo)} — ${esc(cu?cu.name:'')}</option>`;}).join('')}</select></div>
+    <div class="field"><label for="f_orderId">Job (optional)</label><select id="f_orderId"><option value="">Koi job nahi</option>${JOBS.map(o=>{const cu=CUSTOMERS.find(x=>x.id===o.customerId);return `<option value="${o.id}" ${editing&&editing.orderId===o.id?'selected':''}>${esc(o.jobNo)} — ${esc(cu?cu.name:'')}</option>`;}).join('')}</select></div>
     <div class="field"><label for="f_operator">Operator / Worker</label><input id="f_operator" list="operatorList" value="${esc(editing?.operator)}" placeholder="e.g. Ramesh"><datalist id="operatorList">${uniqueVals(CUTTING,'operator').map(v=>`<option value="${esc(v)}">`).join('')}</datalist></div>
     <div class="field"><label for="f_notes">Notes</label><textarea id="f_notes">${esc(editing?.notes)}</textarea></div>
   `;
@@ -1390,7 +1420,7 @@ function renderPayments(){
   }
   listEl.innerHTML=list.map(p=>{
     const cust=CUSTOMERS.find(x=>x.id===p.customerId);
-    const order=ORDERS.find(o=>o.id===p.orderId);
+    const order=JOBS.find(o=>o.id===p.orderId);
     return `
     <div class="row-card">
       <div class="row-top">
@@ -1423,7 +1453,7 @@ function openPaymentForm(id){
     <div class="field"><label for="f_customerId">Customer * <a href="#" onclick="quickParty(event)" style="text-transform:none;letter-spacing:0;color:var(--accent-dark);margin-left:6px;">+ nayi party</a></label><select id="f_customerId">${CUSTOMERS.map(c=>`<option value="${c.id}" ${editing&&editing.customerId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
     <div class="field-row">
       <div class="field"><label for="f_mode">Mode</label><select id="f_mode">${PAY_MODES.map(m=>`<option value="${m}" ${editing&&editing.mode===m?'selected':''}>${m}</option>`).join('')}</select></div>
-      <div class="field"><label for="f_orderId">Order (optional)</label><select id="f_orderId"><option value="">No order link</option>${ORDERS.map(o=>`<option value="${o.id}" ${editing&&editing.orderId===o.id?'selected':''}>${esc(o.jobNo)}</option>`).join('')}</select></div>
+      <div class="field"><label for="f_orderId">Job (optional)</label><select id="f_orderId"><option value="">Koi job nahi</option>${JOBS.map(o=>`<option value="${o.id}" ${editing&&editing.orderId===o.id?'selected':''}>${esc(o.jobNo)}</option>`).join('')}</select></div>
     </div>
     <div class="field"><label for="f_notes">Notes</label><textarea id="f_notes">${esc(editing?.notes)}</textarea></div>
   `;
@@ -1558,6 +1588,329 @@ async function deleteMaint(id){
   if(ok){showToast('Record deleted.');renderAll();}
 }
 
+/* ===================== JOBS + IMAGES ===================== */
+const STAGES=['New Order','Designing','Cutting','Ready','Delivered','Closed'];
+const JOB_STATUSES=[{v:'New Order',c:'amber'},{v:'Designing',c:'steel'},{v:'Cutting',c:'steel'},{v:'Ready',c:'green'},{v:'Delivered',c:'gray'},{v:'Closed',c:'gray'}];
+const SERVICES=[{v:'both',l:'Designing + Cutting'},{v:'design',l:'Designing only'},{v:'cut',l:'Die cutting only'},{v:'rework',l:'Modification / Rework'},{v:'other',l:'Other'}];
+const BUCKET='die-images';
+let JOBS=[], PROFILES=[], JT=null;
+const IMGURL={};
+function svcLabel(v){return (SERVICES.find(s=>s.v===v)||{l:v}).l;}
+function partyName(id){const c=CUSTOMERS.find(x=>x.id===id);return c?c.name:'Unknown party';}
+function jobTotals(j){let d=0,c=0,o=0;(j.items||[]).forEach(i=>{d+=Number(i.designingCharge)||0;c+=Number(i.cuttingCharge)||0;o+=Number(i.otherCharge)||0;});return {d,c,o,all:d+c+o};}
+function jobQty(j){return (j.items||[]).reduce((s,i)=>s+(Number(i.qty)||0),0);}
+async function pageAll(table){
+  const rows=[];
+  for(let from=0;;from+=1000){
+    const {data,error}=await sb.from(table).select('*').order('id').range(from,from+999);
+    if(error) throw error;
+    rows.push(...data);
+    if(data.length<1000) break;
+  }
+  return rows;
+}
+async function fetchJobs(){
+  const [jr,ir,gr]=await Promise.all([pageAll('dieshop_jobs'),pageAll('dieshop_job_items'),pageAll('dieshop_job_images')]);
+  const imgsByItem={};
+  gr.forEach(g=>{(imgsByItem[g.item_id]=imgsByItem[g.item_id]||[]).push({id:g.id,path:g.path,by:g.uploaded_by_name,at:g.uploaded_at});});
+  const itemsByJob={};
+  ir.sort((a,b)=>a.position-b.position).forEach(i=>{
+    (itemsByJob[i.job_id]=itemsByJob[i.job_id]||[]).push({id:i.id,designName:i.design_name,dieSize:i.die_size,qty:i.qty,service:i.service,
+      designingCharge:Number(i.designing_charge)||0,cuttingCharge:Number(i.cutting_charge)||0,otherCharge:Number(i.other_charge)||0,
+      images:(imgsByItem[i.id]||[]).sort((a,b)=>(a.at||'').localeCompare(b.at||''))});
+  });
+  META.jobs={};
+  JOBS=jr.map(j=>{META.jobs[j.id]={by:j.updated_by_name,at:j.updated_at};
+    return {id:j.id,jobNo:j.job_no,customerId:j.party_id,date:j.job_date,operator:j.operator,status:j.status,notes:j.notes,createdAt:j.created_at,items:itemsByJob[j.id]||[]};});
+}
+async function fetchProfiles(){
+  const {data}=await sb.from('dieshop_profiles').select('display_name,active');
+  PROFILES=data||[];
+}
+function jobsChanged(){
+  clearTimeout(JT);
+  JT=setTimeout(()=>{ fetchJobs().then(scheduleRender).catch(()=>{}); },400);
+}
+
+/* ----- images: private bucket, short-lived signed links ----- */
+async function ensureUrls(paths){
+  const now=Date.now();
+  const need=[...new Set(paths)].filter(p=>!IMGURL[p]||IMGURL[p].exp<now+60000);
+  for(let i=0;i<need.length;i+=100){
+    const chunk=need.slice(i,i+100);
+    const {data,error}=await sb.storage.from(BUCKET).createSignedUrls(chunk,3600);
+    if(error||!data) continue;
+    data.forEach(d=>{ if(d.signedUrl&&d.path) IMGURL[d.path]={url:d.signedUrl,exp:now+3600000}; });
+  }
+}
+function hydrateImages(){
+  const imgs=[...document.querySelectorAll('img[data-path]')];
+  const missing=[];
+  imgs.forEach(im=>{
+    const c=IMGURL[im.dataset.path];
+    if(c&&c.exp>Date.now()){ if(im.getAttribute('src')!==c.url) im.src=c.url; }
+    else missing.push(im.dataset.path);
+  });
+  if(missing.length) ensureUrls(missing).then(()=>{
+    imgs.forEach(im=>{const c=IMGURL[im.dataset.path]; if(c&&!im.getAttribute('src')) im.src=c.url;});
+  });
+}
+async function compressImage(file){
+  try{
+    const bmp=await createImageBitmap(file);
+    const sc=Math.min(1,1600/Math.max(bmp.width,bmp.height));
+    const w=Math.round(bmp.width*sc), h=Math.round(bmp.height*sc);
+    const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+    cv.getContext('2d').drawImage(bmp,0,0,w,h);
+    const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',0.82));
+    if(blob) return blob;
+  }catch(e){}
+  return ['image/jpeg','image/png','image/webp'].includes(file.type)?file:null;
+}
+
+/* ----- full-screen viewer ----- */
+let VW={list:[],idx:0}, GALLIST=[];
+function entriesForJob(j){
+  const out=[];
+  j.items.forEach(it=>it.images.forEach(g=>out.push({path:g.path,jobNo:j.jobNo,party:partyName(j.customerId),design:it.designName,date:j.date,operator:j.operator||g.by||''})));
+  return out;
+}
+function openJobViewer(jobId,k){const j=JOBS.find(x=>x.id===jobId); if(!j) return; VW={list:entriesForJob(j),idx:k}; showViewer();}
+function openGalleryViewer(k){VW={list:GALLIST,idx:k}; showViewer();}
+function showViewer(){
+  const e=VW.list[VW.idx]; if(!e) return;
+  const v=document.getElementById('viewer'), im=document.getElementById('vwImg');
+  im.removeAttribute('src');
+  const c=IMGURL[e.path];
+  if(c&&c.exp>Date.now()) im.src=c.url; else ensureUrls([e.path]).then(()=>{const c2=IMGURL[e.path]; if(c2&&VW.list[VW.idx]===e) im.src=c2.url;});
+  document.getElementById('vwCap').innerHTML=`<b>${esc(e.jobNo)}</b> · ${esc(e.party)}<br>${esc(e.design)} · ${fmtDate(e.date)}${e.operator?' · '+esc(e.operator):''}<br><span style="opacity:.6">${VW.idx+1} / ${VW.list.length}</span>`;
+  v.classList.add('open'); document.body.style.overflow='hidden';
+}
+function stepViewer(d){ if(!VW.list.length) return; VW.idx=(VW.idx+d+VW.list.length)%VW.list.length; showViewer(); }
+function closeViewer(){document.getElementById('viewer').classList.remove('open'); if(!document.getElementById('overlay').classList.contains('open')) document.body.style.overflow='';}
+document.addEventListener('keydown',e=>{
+  if(!document.getElementById('viewer').classList.contains('open')) return;
+  if(e.key==='Escape') closeViewer(); else if(e.key==='ArrowLeft') stepViewer(-1); else if(e.key==='ArrowRight') stepViewer(1);
+});
+
+/* ----- Jobs list ----- */
+let jobSearch='', jobFilter='', jobDate='';
+function renderJobs(){
+  const el=document.getElementById('sec-jobs');
+  if(!READY){el.innerHTML=loadingBlock();return;}
+  const q=jobSearch.toLowerCase();
+  const list=JOBS.filter(j=>{
+    const text=(j.jobNo+' '+partyName(j.customerId)+' '+(j.operator||'')+' '+j.items.map(i=>i.designName).join(' ')).toLowerCase();
+    return (!jobFilter||j.status===jobFilter)&&(!jobDate||j.date===jobDate)&&(!q||text.includes(q));
+  }).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''));
+  el.innerHTML=`
+    <div class="section-head">
+      <div><div class="section-title">Jobs</div><div class="section-sub">${list.length} job${list.length===1?'':'s'}${jobDate?' on '+fmtDateShort(jobDate):''}</div></div>
+      <button class="btn btn-primary" onclick="openJobForm()">${ICON.plus} New Job</button>
+    </div>
+    <div class="toolbar">
+      <input class="date-filter" type="date" value="${jobDate}" onchange="jobDate=this.value;renderJobs()" aria-label="Date">
+      <button class="chip-btn ${jobDate===todayISO()?'on':''}" onclick="jobDate='${todayISO()}';renderJobs()">Today</button>
+      <button class="chip-btn ${jobDate===''?'on':''}" onclick="jobDate='';renderJobs()">All</button>
+      <select class="filter-select" onchange="jobFilter=this.value;renderJobs()"><option value="">Sab status</option>${STAGES.map(s=>`<option ${jobFilter===s?'selected':''}>${s}</option>`).join('')}</select>
+      <input class="search-input" id="jobSearchInput" placeholder="Job no, party, design, operator..." value="${esc(jobSearch)}" oninput="jobSearch=this.value;rr(renderJobs)">
+    </div>
+    <div class="data-list" id="jobsList"></div>`;
+  const listEl=document.getElementById('jobsList');
+  if(!list.length){
+    listEl.innerHTML=`<div class="empty-state">${ICON.box}<div class="et">${JOBS.length?'Koi job nahi mili':'Abhi koi job nahi'}</div><div class="es">${JOBS.length?'Dusra search ya filter try karein.':'Naya job banao: party, die items aur har die ki image.'}</div>${!JOBS.length?`<button class="btn btn-primary" onclick="openJobForm()">${ICON.plus} New Job</button>`:''}</div>`;
+    return;
+  }
+  listEl.innerHTML=list.map(j=>{
+    const t=jobTotals(j), ents=entriesForJob(j);
+    const idx=STAGES.indexOf(j.status), next=STAGES[idx+1];
+    const thumbs=ents.slice(0,6).map((e,k)=>`<img class="thumb" data-path="${esc(e.path)}" alt="" onclick="openJobViewer('${j.id}',${k})">`).join('')+(ents.length>6?`<div class="thumb-more" onclick="openJobViewer('${j.id}',6)">+${ents.length-6}</div>`:'');
+    return `
+    <div class="row-card">
+      <div class="row-top">
+        <div>
+          <div class="row-title">${esc(j.jobNo)} — ${esc(partyName(j.customerId))}</div>
+          <div class="row-sub">${j.items.length} die item${j.items.length===1?'':'s'} · ${jobQty(j)} pcs · ${fmtDate(j.date)}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          ${plateFor(j.status,JOB_STATUSES)}
+          <div class="row-actions">
+            <button class="icon-btn" aria-label="Edit job" onclick="openJobForm('${j.id}')">${ICON.edit}</button>
+            <button class="icon-btn" aria-label="Delete job" onclick="deleteJob('${j.id}')">${ICON.trash}</button>
+          </div>
+        </div>
+      </div>
+      <div class="thumbs">${thumbs}</div>
+      <div class="row-meta">
+        ${j.operator?`<span><b>Operator:</b> ${esc(j.operator)}</span>`:''}
+        <span><b>Charges:</b> ${fmtMoney(t.all)}</span>
+        <span>Design ${fmtMoney(t.d)} · Cutting ${fmtMoney(t.c)}${t.o?' · Other '+fmtMoney(t.o):''}</span>
+      </div>
+      <div class="row-meta" style="margin-top:4px;">${j.items.map(i=>`<span>${esc(i.designName)} ×${i.qty} (${esc(svcLabel(i.service))})</span>`).join('')}</div>
+      ${j.notes?`<div class="row-meta" style="margin-top:4px;">${esc(j.notes)}</div>`:''}
+      ${next?`<div class="team-actions"><button class="btn btn-ghost btn-sm" onclick="advanceJob('${j.id}')">Agla step: ${next} &rarr;</button></div>`:''}
+    </div>`;
+  }).join('');
+}
+async function advanceJob(id){
+  const j=JOBS.find(x=>x.id===id); if(!j) return;
+  const next=STAGES[STAGES.indexOf(j.status)+1]; if(!next) return;
+  const {error}=await sb.from('dieshop_jobs').update({status:next}).eq('id',id);
+  if(error){showToast(error.message,true);return;}
+  await fetchJobs(); renderAll(); showToast('Job ab "'+next+'" mein hai.');
+}
+async function deleteJob(id){
+  const j=JOBS.find(x=>x.id===id); if(!j) return;
+  if(!confirm('Job '+j.jobNo+' delete karein? Uski images bhi hat jayengi.')) return;
+  const paths=j.items.flatMap(i=>i.images.map(g=>g.path));
+  const {error}=await sb.from('dieshop_jobs').delete().eq('id',id);
+  if(error){showToast(error.message,true);return;}
+  if(paths.length) sb.storage.from(BUCKET).remove(paths);
+  await fetchJobs(); renderAll(); showToast('Job delete ho gayi.');
+}
+
+/* ----- Job form (items + images) ----- */
+let JF=null;
+function newJobItem(){return {id:crypto.randomUUID(),designName:'',dieSize:'',qty:1,service:'both',designingCharge:0,cuttingCharge:0,otherCharge:0,images:[]};}
+function openJobForm(id){
+  if(!CUSTOMERS.length){showToast('Pehle ek party jodo (Parties tab).',true);return;}
+  const e=id?JOBS.find(j=>j.id===id):null;
+  JF={id:e?e.id:crypto.randomUUID(),removed:[],items:e?e.items.map(i=>Object.assign({},i,{images:i.images.map(g=>({path:g.path,existing:true}))})):[newJobItem()]};
+  const ops=[...new Set([...PROFILES.filter(p=>p.active).map(p=>p.display_name),...JOBS.map(j=>j.operator).filter(Boolean)])];
+  document.getElementById('modalTitle').textContent=e?'Edit Job '+e.jobNo:'New Job';
+  document.getElementById('modalBody').innerHTML=`
+    <div class="field"><label for="f_customerId">Party * <a href="#" onclick="quickParty(event)" style="text-transform:none;letter-spacing:0;color:var(--accent-dark);margin-left:6px;">+ nayi party</a></label>
+      <select id="f_customerId">${CUSTOMERS.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}" ${e&&e.customerId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+    <div class="field-row">
+      <div class="field"><label for="f_date">Date</label><input id="f_date" type="date" value="${e?e.date:todayISO()}"></div>
+      <div class="field"><label for="f_status">Status</label><select id="f_status">${STAGES.map(s=>`<option ${(e?e.status:'New Order')===s?'selected':''}>${s}</option>`).join('')}</select></div>
+    </div>
+    <div class="field"><label for="f_operator">Operator</label><input id="f_operator" list="opList" value="${esc(e?e.operator:(ME?ME.display_name:''))}"><datalist id="opList">${ops.map(o=>`<option value="${esc(o)}">`).join('')}</datalist></div>
+    <div class="group-label" style="margin:4px 0 0;">Die items</div>
+    <div id="jobItems" style="display:flex;flex-direction:column;gap:10px;"></div>
+    <button type="button" class="btn btn-ghost" onclick="addJobItem()">${ICON.plus} Aur die item</button>
+    <div class="field"><label for="f_notes">Notes</label><textarea id="f_notes">${esc(e?e.notes:'')}</textarea></div>`;
+  document.getElementById('modalSaveBtn').onclick=()=>saveJob();
+  openModal(); renderJobItems();
+}
+function renderJobItems(){
+  const num=(i,k,min)=>`<input type="number" inputmode="decimal" min="${min}" step="any" value="${JF.items[i][k]}" oninput="JF.items[${i}].${k}=this.value">`;
+  document.getElementById('jobItems').innerHTML=JF.items.map((it,i)=>`
+    <div class="item-box">
+      <div class="row-top"><div class="row-title">Die item ${i+1}</div>${JF.items.length>1?`<button type="button" class="icon-btn" aria-label="Remove item" onclick="removeJobItem(${i})">${ICON.trash}</button>`:''}</div>
+      <div class="field"><label>Design name *</label><input value="${esc(it.designName)}" oninput="JF.items[${i}].designName=this.value" placeholder="e.g. Heart die"></div>
+      <div class="field-row">
+        <div class="field"><label>Die size</label><input value="${esc(it.dieSize)}" oninput="JF.items[${i}].dieSize=this.value" placeholder="e.g. 8x10 in"></div>
+        <div class="field"><label>Qty *</label>${num(i,'qty',1)}</div>
+      </div>
+      <div class="field"><label>Service</label><select onchange="JF.items[${i}].service=this.value">${SERVICES.map(s=>`<option value="${s.v}" ${it.service===s.v?'selected':''}>${s.l}</option>`).join('')}</select></div>
+      <div class="field-row">
+        <div class="field"><label>Designing ₹</label>${num(i,'designingCharge',0)}</div>
+        <div class="field"><label>Cutting ₹</label>${num(i,'cuttingCharge',0)}</div>
+      </div>
+      <div class="field"><label>Other charges ₹</label>${num(i,'otherCharge',0)}</div>
+      <div>
+        <div class="group-label" style="margin:0;">Image * (kam se kam 1)</div>
+        <div class="thumbs">${it.images.map((g,k)=>`<span class="thumb-wrap"><img class="thumb" ${g.existing?`data-path="${esc(g.path)}"`:`src="${g.preview}"`} alt=""><button type="button" class="thumb-x" aria-label="Remove image" onclick="removeJobImg(${i},${k})">&times;</button></span>`).join('')}</div>
+        <div class="team-actions">
+          <span class="btn btn-ghost btn-sm filebtn">Camera<input type="file" accept="image/*" capture="environment" onchange="addJobImgs(${i},this)"></span>
+          <span class="btn btn-ghost btn-sm filebtn">Gallery se<input type="file" accept="image/*" multiple onchange="addJobImgs(${i},this)"></span>
+        </div>
+      </div>
+    </div>`).join('');
+  hydrateImages();
+}
+function addJobItem(){JF.items.push(newJobItem());renderJobItems();}
+function removeJobItem(i){
+  JF.items[i].images.forEach(g=>{ if(g.existing) JF.removed.push(g.path); else if(g.preview) URL.revokeObjectURL(g.preview); });
+  JF.items.splice(i,1); renderJobItems();
+}
+async function addJobImgs(i,input){
+  const files=[...input.files]; input.value='';
+  for(const f of files){
+    const blob=await compressImage(f);
+    if(!blob){showToast('Ye image format chalta nahi (JPG/PNG/WebP lein).',true);continue;}
+    JF.items[i].images.push({blob,preview:URL.createObjectURL(blob)});
+  }
+  renderJobItems();
+}
+function removeJobImg(i,k){
+  const g=JF.items[i].images[k];
+  if(g.existing) JF.removed.push(g.path); else if(g.preview) URL.revokeObjectURL(g.preview);
+  JF.items[i].images.splice(k,1); renderJobItems();
+}
+async function saveJob(){
+  const party=document.getElementById('f_customerId').value;
+  if(!party){showToast('Party chuno.',true);return;}
+  for(let i=0;i<JF.items.length;i++){
+    const it=JF.items[i], n='Die item '+(i+1)+': ';
+    if(!String(it.designName).trim()){showToast(n+'design name likho.',true);return;}
+    if(!(parseInt(it.qty,10)>0)){showToast(n+'qty 1 ya zyada honi chahiye.',true);return;}
+    if([it.designingCharge,it.cuttingCharge,it.otherCharge].some(v=>Number(v)<0)){showToast(n+'charges minus nahi ho sakte.',true);return;}
+    if(!it.images.length){showToast(n+'image zaroori hai (Camera ya Gallery se).',true);return;}
+  }
+  const btn=document.getElementById('modalSaveBtn');
+  btn.disabled=true; btn.textContent='Save ho raha hai…';
+  const uploaded=[];
+  try{
+    for(const it of JF.items){
+      for(const g of it.images){
+        if(g.existing||g.path) continue;
+        const ext=g.blob.type==='image/png'?'png':g.blob.type==='image/webp'?'webp':'jpg';
+        const path=JF.id+'/'+it.id+'/'+crypto.randomUUID()+'.'+ext;
+        const {error}=await sb.storage.from(BUCKET).upload(path,g.blob,{contentType:g.blob.type||'image/jpeg'});
+        if(error) throw error;
+        uploaded.push(path); g.path=path;
+      }
+    }
+    const payload={id:JF.id,party_id:party,job_date:document.getElementById('f_date').value||todayISO(),
+      operator:document.getElementById('f_operator').value.trim(),status:document.getElementById('f_status').value,
+      notes:document.getElementById('f_notes').value.trim(),
+      items:JF.items.map(it=>({id:it.id,design_name:String(it.designName).trim(),die_size:String(it.dieSize||'').trim(),qty:parseInt(it.qty,10),service:it.service,
+        designing_charge:Number(it.designingCharge)||0,cutting_charge:Number(it.cuttingCharge)||0,other_charge:Number(it.otherCharge)||0,images:it.images.map(g=>g.path)}))};
+    const {error}=await sb.rpc('dieshop_save_job',{p:payload});
+    if(error) throw error;
+    if(JF.removed.length) sb.storage.from(BUCKET).remove(JF.removed);
+    await fetchJobs(); closeModal(); showToast('Job save ho gayi.'); renderAll();
+  }catch(e){
+    if(uploaded.length) sb.storage.from(BUCKET).remove(uploaded);
+    JF.items.forEach(it=>it.images.forEach(g=>{ if(!g.existing) delete g.path; }));
+    showToast((e&&e.message)?e.message:'Save nahi hua. Internet check karein.',true);
+  }finally{ btn.disabled=false; btn.textContent='Save'; }
+}
+
+/* ----- Gallery ----- */
+let galGroup='party', galSearch='';
+function renderGallery(){
+  const el=document.getElementById('sec-gallery');
+  if(!READY){el.innerHTML=loadingBlock();return;}
+  const q=galSearch.toLowerCase();
+  let ents=[];
+  JOBS.forEach(j=>j.items.forEach(it=>it.images.forEach(g=>ents.push({path:g.path,jobNo:j.jobNo,party:partyName(j.customerId),design:it.designName,date:j.date,operator:j.operator||g.by||'—'}))));
+  ents=ents.filter(e=>!q||(e.jobNo+' '+e.party+' '+e.design+' '+e.operator).toLowerCase().includes(q));
+  const keyOf=e=>galGroup==='party'?e.party:galGroup==='operator'?e.operator:e.date;
+  const groups={}; ents.forEach(e=>{(groups[keyOf(e)]=groups[keyOf(e)]||[]).push(e);});
+  let keys=Object.keys(groups); keys=galGroup==='date'?keys.sort().reverse():keys.sort((a,b)=>a.localeCompare(b));
+  GALLIST=[]; keys.forEach(k=>groups[k].forEach(e=>GALLIST.push(e)));
+  let n=0;
+  const body=keys.map(k=>{
+    const label=galGroup==='date'?fmtDate(k):k;
+    const grid=groups[k].map(e=>`<img class="thumb" data-path="${esc(e.path)}" alt="" title="${esc(e.jobNo+' · '+e.design)}" onclick="openGalleryViewer(${n++})">`).join('');
+    return `<div class="group-label">${esc(label)} · ${groups[k].length}</div><div class="gal-grid">${grid}</div>`;
+  }).join('');
+  el.innerHTML=`
+    <div class="section-head"><div><div class="section-title">Gallery</div><div class="section-sub">${ents.length} image${ents.length===1?'':'s'} · ${keys.length} group${keys.length===1?'':'s'}</div></div></div>
+    <div class="toolbar">
+      <select class="filter-select" onchange="galGroup=this.value;renderGallery();hydrateImages()">
+        <option value="party" ${galGroup==='party'?'selected':''}>Party-wise</option>
+        <option value="date" ${galGroup==='date'?'selected':''}>Date-wise</option>
+        <option value="operator" ${galGroup==='operator'?'selected':''}>Operator-wise</option>
+      </select>
+      <input class="search-input" id="galSearchInput" placeholder="Party, design, job no, operator..." value="${esc(galSearch)}" oninput="galSearch=this.value;rr(renderGallery);hydrateImages()">
+    </div>
+    ${ents.length?body:`<div class="empty-state">${ICON.box}<div class="et">Abhi koi image nahi</div><div class="es">Jobs mein die ki images jodoge to yahin party, date aur operator ke hisaab se dikhengi.</div></div>`}`;
+}
+
 /* ===================== MODAL ===================== */
 function openModal(){document.getElementById('modalSaveBtn').style.display='';document.getElementById('overlay').classList.add('open');document.body.style.overflow='hidden';}
 function closeModal(){document.getElementById('overlay').classList.remove('open');document.body.style.overflow='';}
@@ -1584,7 +1937,7 @@ function addBylines(){
   });
 }
 const _renderAll=renderAll;
-renderAll=function(){ _renderAll(); renderTeam(); addBylines(); };
+renderAll=function(){ _renderAll(); renderTeam(); addBylines(); hydrateImages(); };
 
 /* ===================== TEAM (owner only) ===================== */
 let TEAM=[];
