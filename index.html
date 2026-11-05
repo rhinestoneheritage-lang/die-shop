@@ -348,6 +348,8 @@
   <section class="section" id="sec-dies"></section>
   <section class="section" id="sec-jobs"></section>
   <section class="section" id="sec-invoices"></section>
+  <section class="section" id="sec-expenses"></section>
+  <section class="section" id="sec-partnership"></section>
   <section class="section" id="sec-gallery"></section>
   <section class="section" id="sec-cutting"></section>
   <section class="section" id="sec-designs"></section>
@@ -407,6 +409,8 @@ const TABS=[
   {id:'dies',label:'Dies',icon:'dies'},
   {id:'jobs',label:'Jobs',icon:'orders'},
   {id:'invoices',label:'Invoices',icon:'payments'},
+  {id:'expenses',label:'Expenses',icon:'maintenance'},
+  {id:'partnership',label:'Partnership',icon:'customers'},
   {id:'gallery',label:'Gallery',icon:'design'},
   {id:'cutting',label:'Cutting Log',icon:'cutting'},
   {id:'designs',label:'Designs',icon:'design'},
@@ -462,7 +466,7 @@ const SB_KEY='sb_publishable_Le2efyGVTixAxEtJF8tK-w_GwncPKy5';
 const MAIL_DOMAIN='dieshop.rhstockandbill.in';
 const sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,storageKey:'dietrack-auth'}});
 const COLS=['dies','customers','orders','maintenance','cutting','designs','payments'];
-const FORM_COL={Die:'dies',Customer:'customers',Job:'jobs',Invoice:'invoices',Order:'orders',Maint:'maintenance',Cutting:'cutting',Design:'designs',Payment:'payments'};
+const FORM_COL={Die:'dies',Customer:'customers',Job:'jobs',Invoice:'invoices',Expense:'expenses',Capital:'capital',Drawing:'drawings',Order:'orders',Maint:'maintenance',Cutting:'cutting',Design:'designs',Payment:'payments'};
 let ME=null, READY=false, slow=false, subErr='', writing=0, CHAN=null, POLL=null;
 const LAST={}, META={};
 COLS.forEach(c=>{LAST[c]={};META[c]={};});
@@ -513,7 +517,7 @@ async function fetchCol(col){
 }
 async function refreshAll(){
   if(document.hidden||writing>0||!ME) return;
-  try{ await Promise.all([...COLS.map(fetchCol),fetchJobs(),fetchProfiles(),fetchInvoices(),fetchSettings()]); subErr=''; updateStatus(); scheduleRender(); }catch(e){}
+  try{ await Promise.all([...COLS.map(fetchCol),fetchJobs(),fetchProfiles(),fetchInvoices(),fetchSettings(),fetchFinance()]); subErr=''; updateStatus(); scheduleRender(); }catch(e){}
 }
 function applyTableChange(col,p){
   const T=TABLES[col];
@@ -547,7 +551,7 @@ function applyChange(p){
 async function startData(){
   READY=false; subErr=''; updateStatus(); renderAll();
   const slowTimer=setTimeout(()=>{slow=true;updateStatus();},10000);
-  try{ await Promise.all([...COLS.map(fetchCol),fetchJobs(),fetchProfiles(),fetchInvoices(),fetchSettings()]); READY=true; }
+  try{ await Promise.all([...COLS.map(fetchCol),fetchJobs(),fetchProfiles(),fetchInvoices(),fetchSettings(),fetchFinance()]); READY=true; }
   catch(e){ subErr='load'; READY=true; }
   clearTimeout(slowTimer); slow=false;
   updateStatus(); renderAll();
@@ -559,6 +563,10 @@ async function startData(){
     .on('postgres_changes',{event:'*',schema:'public',table:'dieshop_job_images'},jobsChanged)
     .on('postgres_changes',{event:'*',schema:'public',table:'dieshop_invoices'},jobsChanged)
     .on('postgres_changes',{event:'*',schema:'public',table:'dieshop_invoice_lines'},jobsChanged)
+    .on('postgres_changes',{event:'*',schema:'public',table:'dieshop_expenses'},jobsChanged)
+    .on('postgres_changes',{event:'*',schema:'public',table:'dieshop_capital'},jobsChanged)
+    .on('postgres_changes',{event:'*',schema:'public',table:'dieshop_drawings'},jobsChanged)
+    .on('postgres_changes',{event:'*',schema:'public',table:'dieshop_profit_closings'},jobsChanged)
     .subscribe(st=>{ /* polling below covers any gap */ });
   POLL=setInterval(refreshAll,60000);
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refreshAll(); });
@@ -632,7 +640,7 @@ function showToast(msg,isErr){
 /* ===================== NAV ===================== */
 function renderTabs(){
   const nav=document.getElementById('tabs');
-  nav.innerHTML=TABS.filter(t=>t.id!=='team'||isOwner()).map(t=>`
+  nav.innerHTML=TABS.filter(t=>(t.id!=='team'&&t.id!=='partnership')||isOwner()).map(t=>`
     <button class="tab-btn ${t.id===activeTab?'active':''}" onclick="switchTab('${t.id}')">
       ${ICON[t.icon]}<span>${t.label}</span>
     </button>`).join('');
@@ -655,6 +663,8 @@ function renderAll(){
   renderDies();
   renderJobs();
   renderInvoices();
+  renderExpenses();
+  renderPartnership();
   renderGallery();
   renderCutting();
   renderDesigns();
@@ -743,6 +753,7 @@ function renderDashboard(){
       <div class="stat-plate accent"><div class="num">${fmtMoney(paymentTotalToday)}</div><div class="lbl">Payment Received Today</div></div>
     </div>
 
+    ${isOwner()?monthCardHtml():''}
     <div class="group-label">Overall</div>
     <div class="plate-grid">
       <div class="stat-plate"><div class="num">${totalDies}</div><div class="lbl">Total Dies</div></div>
@@ -1626,10 +1637,10 @@ function svcLabel(v){return (SERVICES.find(s=>s.v===v)||{l:v}).l;}
 function partyName(id){const c=CUSTOMERS.find(x=>x.id===id);return c?c.name:'Unknown party';}
 function jobTotals(j){let d=0,c=0,o=0;(j.items||[]).forEach(i=>{d+=Number(i.designingCharge)||0;c+=Number(i.cuttingCharge)||0;o+=Number(i.otherCharge)||0;});return {d,c,o,all:d+c+o};}
 function jobQty(j){return (j.items||[]).reduce((s,i)=>s+(Number(i.qty)||0),0);}
-async function pageAll(table){
+async function pageAll(table,col){
   const rows=[];
   for(let from=0;;from+=1000){
-    const {data,error}=await sb.from(table).select('*').order('id').range(from,from+999);
+    const {data,error}=await sb.from(table).select('*').order(col||'id').range(from,from+999);
     if(error) throw error;
     rows.push(...data);
     if(data.length<1000) break;
@@ -1656,7 +1667,7 @@ async function fetchProfiles(){
 }
 function jobsChanged(){
   clearTimeout(JT);
-  JT=setTimeout(()=>{ Promise.all([fetchJobs(),fetchInvoices()]).then(scheduleRender).catch(()=>{}); },400);
+  JT=setTimeout(()=>{ Promise.all([fetchJobs(),fetchInvoices(),fetchFinance()]).then(scheduleRender).catch(()=>{}); },400);
 }
 
 /* ----- images: private bucket, short-lived signed links ----- */
@@ -2164,17 +2175,268 @@ function openBusinessForm(){
       <div class="field"><label for="b_phone">Phone</label><input id="b_phone" value="${esc(SETTINGS.phone||'')}"></div>
       <div class="field"><label for="b_gstin">GSTIN (optional)</label><input id="b_gstin" value="${esc(SETTINGS.gstin||'')}" autocapitalize="characters"></div>
     </div>
-    <div class="field"><label for="b_tax">Default tax % (0 = tax nahi)</label><input id="b_tax" type="number" inputmode="decimal" min="0" max="100" step="any" value="${esc(SETTINGS.default_tax||'0')}"></div>`;
+    <div class="field"><label for="b_tax">Default tax % (0 = tax nahi)</label><input id="b_tax" type="number" inputmode="decimal" min="0" max="100" step="any" value="${esc(SETTINGS.default_tax||'0')}"></div>
+    <div class="field-row">
+      <div class="field"><label for="b_basis">Profit kis par ginein</label><select id="b_basis"><option value="billed" ${basisNow()==='billed'?'selected':''}>Bill kiya hua (Recommended)</option><option value="received" ${basisNow()==='received'?'selected':''}>Paisa mila hua</option></select></div>
+      <div class="field"><label for="b_aq">Aquib ka hissa %</label><input id="b_aq" type="number" inputmode="decimal" min="0" max="100" step="any" value="${aqPct()}"></div>
+    </div>
+    <div class="login-hint">Hassan ka hissa apne aap baaki (100 minus Aquib) hoga. Ye sirf aane wale mahino ke closing par lagega, band ho chuke mahine nahi badlenge.</div>`;
   openModal();
   document.getElementById('modalSaveBtn').onclick=async()=>{
     const tax=Number(document.getElementById('b_tax').value)||0;
     if(tax<0||tax>100){showToast('Tax 0 se 100 ke beech ho.',true);return;}
     const rows=[['business_name','b_name'],['address','b_addr'],['phone','b_phone'],['gstin','b_gstin']].map(([k,id])=>({key:k,value:document.getElementById(id).value.trim(),updated_at:new Date().toISOString()}));
+    const aq=Number(document.getElementById('b_aq').value);
+    if(!(aq>=0&&aq<=100)){showToast('Aquib ka hissa 0 se 100 ke beech ho.',true);return;}
     rows.push({key:'default_tax',value:String(tax),updated_at:new Date().toISOString()});
+    rows.push({key:'profit_basis',value:document.getElementById('b_basis').value,updated_at:new Date().toISOString()});
+    rows.push({key:'aquib_pct',value:String(aq),updated_at:new Date().toISOString()});
     const {error}=await sb.from('dieshop_settings').upsert(rows,{onConflict:'key'});
     if(error){showToast(error.message,true);return;}
     await fetchSettings(); closeModal(); showToast('Business details save ho gayi.');
   };
+}
+
+/* ===================== EXPENSES, CAPITAL, PARTNERSHIP ===================== */
+let EXPENSES=[], CAPITAL=[], DRAWINGS=[], CLOSINGS=[];
+const EXP_CATS=[{v:'raw_material',l:'Raw Material'},{v:'rent',l:'Rent'},{v:'electricity',l:'Electricity'},{v:'salary',l:'Employee Salary'},{v:'maintenance',l:'Maintenance'},{v:'transport',l:'Transport'},{v:'consumables',l:'Consumables'},{v:'misc',l:'Miscellaneous'}];
+const PARTNERS=[{v:'aquib',l:'Aquib'},{v:'hassan',l:'Hassan'}];
+const catLabel=v=>(EXP_CATS.find(c=>c.v===v)||{l:v}).l;
+const partnerLabel=v=>(PARTNERS.find(c=>c.v===v)||{l:v}).l;
+function basisNow(){return SETTINGS.profit_basis==='received'?'received':'billed';}
+function aqPct(){const v=parseFloat(SETTINGS.aquib_pct);return isFinite(v)?v:60;}
+function prevMonth(){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);return d.getFullYear()+'-'+pad2(d.getMonth()+1);}
+function monthLabel(m){const [y,mm]=m.split('-');return new Date(+y,+mm-1,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'});}
+async function fetchFinance(){
+  const [e,c,d,cl]=await Promise.all([pageAll('dieshop_expenses'),pageAll('dieshop_capital'),pageAll('dieshop_drawings'),pageAll('dieshop_profit_closings','month')]);
+  META.expenses={};META.capital={};META.drawings={};
+  EXPENSES=e.map(r=>{META.expenses[r.id]={by:r.updated_by_name,at:r.updated_at};return {id:r.id,date:r.expense_date,category:r.category,amount:Number(r.amount)||0,paidTo:r.paid_to,notes:r.notes,proofPath:r.proof_path||''};});
+  CAPITAL=c.map(r=>{META.capital[r.id]={by:r.updated_by_name,at:r.updated_at};return {id:r.id,date:r.entry_date,partner:r.partner,kind:r.kind,amount:Number(r.amount)||0,description:r.description};});
+  DRAWINGS=d.map(r=>{META.drawings[r.id]={by:r.updated_by_name,at:r.updated_at};return {id:r.id,date:r.draw_date,partner:r.partner,amount:Number(r.amount)||0,notes:r.notes};});
+  CLOSINGS=cl.map(r=>({month:r.month,status:r.status,basis:r.basis,billed:Number(r.revenue_billed)||0,received:Number(r.revenue_received)||0,revenue:Number(r.revenue_used)||0,expenses:Number(r.expenses)||0,net:Number(r.net_profit)||0,aqPct:Number(r.aquib_pct),hsPct:Number(r.hassan_pct),aqShare:Number(r.aquib_share)||0,hsShare:Number(r.hassan_share)||0,closedAt:r.closed_at,closedBy:r.closed_by_name,notes:r.notes}));
+}
+/* Same formulas as the database function dieshop_month_figures. */
+function monthFig(m){
+  const billed=r2(INVOICES.filter(i=>i.status==='issued'&&(i.date||'').startsWith(m)).reduce((s,i)=>s+i.subtotal-i.discountAmount,0));
+  const received=r2(PAYMENTS.filter(p=>(p.date||'').startsWith(m)).reduce((s,p)=>s+(Number(p.amount)||0),0));
+  const expenses=r2(EXPENSES.filter(e=>(e.date||'').startsWith(m)).reduce((s,e)=>s+e.amount,0));
+  const revenue=basisNow()==='received'?received:billed;
+  const net=r2(revenue-expenses), aq=r2(net*aqPct()/100);
+  return {billed,received,expenses,revenue,net,aqShare:aq,hsShare:r2(net-aq),aqPct:aqPct(),hsPct:r2(100-aqPct())};
+}
+function closingFor(m){return CLOSINGS.find(c=>c.month===m&&c.status==='closed');}
+function monthCardHtml(){
+  const m=todayISO().slice(0,7), f=monthFig(m);
+  return `<div class="group-label">Is mahine (${monthLabel(m)}) · ${basisNow()==='received'?'mila hua':'bill kiya hua'} par</div>
+    <div class="plate-grid plate-grid-sub">
+      <div class="stat-plate"><div class="num">${fmtMoney(f.revenue)}</div><div class="lbl">Revenue</div></div>
+      <div class="stat-plate"><div class="num">${fmtMoney(f.expenses)}</div><div class="lbl">Expenses</div></div>
+      <div class="stat-plate accent"><div class="num">${fmtMoney(f.net)}</div><div class="lbl">Estimated Profit</div></div>
+      <div class="stat-plate"><div class="num">${fmtMoney(f.aqShare)}</div><div class="lbl">Aquib ${f.aqPct}%</div></div>
+      <div class="stat-plate"><div class="num">${fmtMoney(f.hsShare)}</div><div class="lbl">Hassan ${f.hsPct}%</div></div>
+    </div>`;
+}
+
+/* ----- Expenses (all team) ----- */
+let expMonth=todayISO().slice(0,7), expCat='';
+function renderExpenses(){
+  const el=document.getElementById('sec-expenses');
+  if(!READY){el.innerHTML=loadingBlock();return;}
+  const inMonth=EXPENSES.filter(e=>!expMonth||(e.date||'').startsWith(expMonth));
+  const list=inMonth.filter(e=>!expCat||e.category===expCat).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const total=inMonth.reduce((s,e)=>s+e.amount,0);
+  const byCat=EXP_CATS.map(c=>({l:c.l,t:inMonth.filter(e=>e.category===c.v).reduce((s,e)=>s+e.amount,0)})).filter(x=>x.t>0);
+  const locked=expMonth&&closingFor(expMonth);
+  el.innerHTML=`
+    <div class="section-head">
+      <div><div class="section-title">Expenses</div><div class="section-sub">${expMonth?monthLabel(expMonth):'Sab'} · ${fmtMoney(total)}${locked?' · mahina close hai':''}</div></div>
+      <button class="btn btn-primary" onclick="openExpenseForm()">${ICON.plus} Add Expense</button>
+    </div>
+    <div class="toolbar">
+      <input class="date-filter" type="month" value="${expMonth}" onchange="expMonth=this.value;renderExpenses()" aria-label="Month">
+      <button class="chip-btn ${expMonth===''?'on':''}" onclick="expMonth='';renderExpenses()">Sab</button>
+      <select class="filter-select" onchange="expCat=this.value;renderExpenses()"><option value="">Sab category</option>${EXP_CATS.map(c=>`<option value="${c.v}" ${expCat===c.v?'selected':''}>${c.l}</option>`).join('')}</select>
+    </div>
+    ${byCat.length?`<div class="row-meta" style="margin:0 0 12px;">${byCat.map(x=>`<span><b>${esc(x.l)}:</b> ${fmtMoney(x.t)}</span>`).join('')}</div>`:''}
+    <div class="data-list" id="expList"></div>`;
+  const listEl=document.getElementById('expList');
+  if(!list.length){listEl.innerHTML=`<div class="empty-state">${ICON.box}<div class="et">Koi expense nahi</div><div class="es">Rent, bijli, salary, raw material ya koi bhi kharcha yahan likho. Proof ki photo bhi laga sakte ho.</div><button class="btn btn-primary" onclick="openExpenseForm()">${ICON.plus} Add Expense</button></div>`;return;}
+  listEl.innerHTML=list.map(e=>`
+    <div class="row-card">
+      <div class="row-top">
+        <div><div class="row-title">${esc(catLabel(e.category))}</div><div class="row-sub">${fmtDate(e.date)}${e.paidTo?' · '+esc(e.paidTo):''}</div></div>
+        <div style="display:flex;align-items:center;gap:6px;"><span class="plate red">${fmtMoney(e.amount)}</span>
+          <div class="row-actions"><button class="icon-btn" aria-label="Edit expense" onclick="openExpenseForm('${e.id}')">${ICON.edit}</button><button class="icon-btn" aria-label="Delete expense" onclick="deleteExpense('${e.id}')">${ICON.trash}</button></div></div>
+      </div>
+      ${e.notes?`<div class="row-meta" style="margin-top:4px;">${esc(e.notes)}</div>`:''}
+      ${e.proofPath?`<div class="thumbs"><img class="thumb" data-path="${esc(e.proofPath)}" alt="Proof" onclick="openProofViewer('${e.id}')"></div>`:''}
+    </div>`).join('');
+}
+function openProofViewer(id){
+  const e=EXPENSES.find(x=>x.id===id); if(!e||!e.proofPath) return;
+  VW={list:[{path:e.proofPath,jobNo:'Expense',party:catLabel(e.category)+' · '+fmtMoney(e.amount),design:e.notes||e.paidTo||'',date:e.date,operator:(META.expenses[e.id]||{}).by||''}],idx:0};
+  showViewer();
+}
+let EF=null;
+function openExpenseForm(id){
+  const e=id?EXPENSES.find(x=>x.id===id):null;
+  EF={id:e?e.id:crypto.randomUUID(),oldPath:e?e.proofPath:'',img:e&&e.proofPath?{existing:true,path:e.proofPath}:null};
+  document.getElementById('modalTitle').textContent=e?'Edit Expense':'Add Expense';
+  document.getElementById('modalBody').innerHTML=`
+    <div class="field-row">
+      <div class="field"><label for="f_date">Date</label><input id="f_date" type="date" value="${e?e.date:todayISO()}"></div>
+      <div class="field"><label for="f_amount">Amount (₹) *</label><input id="f_amount" type="number" inputmode="decimal" min="0" step="any" value="${e?e.amount:''}"></div>
+    </div>
+    <div class="field"><label for="f_cat">Category</label><select id="f_cat">${EXP_CATS.map(c=>`<option value="${c.v}" ${e&&e.category===c.v?'selected':''}>${c.l}</option>`).join('')}</select></div>
+    <div class="field"><label for="f_paidto">Kisko diya</label><input id="f_paidto" value="${esc(e?e.paidTo:'')}" placeholder="e.g. Landlord, supplier"></div>
+    <div class="field"><label for="f_notes">Notes</label><textarea id="f_notes">${esc(e?e.notes:'')}</textarea></div>
+    <div><div class="group-label" style="margin:0;">Proof ki photo (optional)</div><div class="thumbs" id="expProof"></div>
+      <div class="team-actions"><span class="btn btn-ghost btn-sm filebtn">Camera<input type="file" accept="image/*" capture="environment" onchange="setExpenseImg(this)"></span><span class="btn btn-ghost btn-sm filebtn">Gallery se<input type="file" accept="image/*" onchange="setExpenseImg(this)"></span></div></div>`;
+  document.getElementById('modalSaveBtn').onclick=saveExpense;
+  openModal(); renderExpProof();
+}
+function renderExpProof(){
+  const el=document.getElementById('expProof'); if(!el) return;
+  el.innerHTML=EF.img?`<span class="thumb-wrap"><img class="thumb" ${EF.img.existing?`data-path="${esc(EF.img.path)}"`:`src="${EF.img.preview}"`} alt=""><button type="button" class="thumb-x" aria-label="Remove" onclick="EF.img=null;renderExpProof()">&times;</button></span>`:'';
+  hydrateImages();
+}
+async function setExpenseImg(input){
+  const f=input.files[0]; input.value=''; if(!f) return;
+  const blob=await compressImage(f);
+  if(!blob){showToast('Ye image format chalta nahi (JPG/PNG/WebP lein).',true);return;}
+  EF.img={blob,preview:URL.createObjectURL(blob)}; renderExpProof();
+}
+async function saveExpense(){
+  const amount=Number(document.getElementById('f_amount').value)||0;
+  if(!(amount>0)){showToast('Amount likho (0 se zyada).',true);return;}
+  const btn=document.getElementById('modalSaveBtn'); btn.disabled=true; btn.textContent='Save ho raha hai…';
+  let uploaded='';
+  try{
+    let proof=EF.img&&EF.img.existing?EF.img.path:null;
+    if(EF.img&&!EF.img.existing){
+      const ext=EF.img.blob.type==='image/png'?'png':EF.img.blob.type==='image/webp'?'webp':'jpg';
+      uploaded='expenses/'+EF.id+'/'+crypto.randomUUID()+'.'+ext;
+      const {error}=await sb.storage.from(BUCKET).upload(uploaded,EF.img.blob,{contentType:EF.img.blob.type||'image/jpeg'});
+      if(error) throw error; proof=uploaded;
+    }
+    const row={id:EF.id,expense_date:document.getElementById('f_date').value||todayISO(),category:document.getElementById('f_cat').value,amount,paid_to:document.getElementById('f_paidto').value.trim(),notes:document.getElementById('f_notes').value.trim(),proof_path:proof};
+    const {error}=await sb.from('dieshop_expenses').upsert(row,{onConflict:'id'});
+    if(error) throw error;
+    if(EF.oldPath&&EF.oldPath!==proof) sb.storage.from(BUCKET).remove([EF.oldPath]);
+    await fetchFinance(); closeModal(); renderAll(); showToast('Expense save ho gaya.');
+  }catch(e){
+    if(uploaded) sb.storage.from(BUCKET).remove([uploaded]);
+    showToast((e&&e.message)||'Save nahi hua. Internet check karein.',true);
+  }finally{ btn.disabled=false; btn.textContent='Save'; }
+}
+async function deleteExpense(id){
+  const e=EXPENSES.find(x=>x.id===id); if(!e) return;
+  if(!confirm('Ye expense delete karein?')) return;
+  const {error}=await sb.from('dieshop_expenses').delete().eq('id',id);
+  if(error){showToast(error.message,true);return;}
+  if(e.proofPath) sb.storage.from(BUCKET).remove([e.proofPath]);
+  await fetchFinance(); renderAll(); showToast('Expense delete ho gaya.');
+}
+
+/* ----- Partnership (owner only) ----- */
+let pMonth=prevMonth();
+function partnerTotals(k){
+  const cap=CAPITAL.filter(c=>c.partner===k).reduce((s,c)=>s+c.amount,0);
+  const share=CLOSINGS.filter(c=>c.status==='closed').reduce((s,c)=>s+(k==='aquib'?c.aqShare:c.hsShare),0);
+  const drawn=DRAWINGS.filter(d=>d.partner===k).reduce((s,d)=>s+d.amount,0);
+  return {cap:r2(cap),share:r2(share),drawn:r2(drawn),left:r2(share-drawn)};
+}
+function renderPartnership(){
+  const el=document.getElementById('sec-partnership');
+  if(!isOwner()){el.innerHTML='';return;}
+  if(!READY){el.innerHTML=loadingBlock();return;}
+  const cl=closingFor(pMonth), f=monthFig(pMonth);
+  const v=cl?{revenue:cl.revenue,billed:cl.billed,received:cl.received,expenses:cl.expenses,net:cl.net,aqShare:cl.aqShare,hsShare:cl.hsShare,aqPct:cl.aqPct,hsPct:cl.hsPct}:f;
+  const isPast=pMonth<todayISO().slice(0,7);
+  const cats=EXP_CATS.map(c=>({l:c.l,t:EXPENSES.filter(e=>e.category===c.v&&(e.date||'').startsWith(pMonth)).reduce((s,e)=>s+e.amount,0)})).filter(x=>x.t>0);
+  const A=partnerTotals('aquib'), H=partnerTotals('hassan');
+  const pCard=(n,t)=>`<div class="card"><h3>${n}</h3><div class="row-meta" style="flex-direction:column;gap:4px;margin:0;"><span><b>Capital lagaya:</b> ${fmtMoney(t.cap)}</span><span><b>Profit hissa (close mahine):</b> ${fmtMoney(t.share)}</span><span><b>Nikala (drawings):</b> ${fmtMoney(t.drawn)}</span><span style="font-size:14px;"><b>Baaki (undistributed):</b> <b>${fmtMoney(t.left)}</b></span></div></div>`;
+  el.innerHTML=`
+    <div class="section-head"><div><div class="section-title">Partnership</div><div class="section-sub">Net profit = revenue − expenses, phir ${aqPct()}/${r2(100-aqPct())}</div></div></div>
+    <div class="toolbar"><input class="date-filter" type="month" value="${pMonth}" onchange="pMonth=this.value||prevMonth();renderPartnership()" aria-label="Month"></div>
+    <div class="card" style="margin-bottom:14px;">
+      <h3>${monthLabel(pMonth)} ${cl?'<span class="plate green" style="margin-left:6px;">Close</span>':'<span class="plate amber" style="margin-left:6px;">Khula</span>'}</h3>
+      <div class="plate-grid" style="margin:0 0 12px;">
+        <div class="stat-plate"><div class="num">${fmtMoney(v.revenue)}</div><div class="lbl">Revenue (${(cl?cl.basis:basisNow())==='received'?'mila':'bill'})</div></div>
+        <div class="stat-plate"><div class="num">${fmtMoney(v.expenses)}</div><div class="lbl">Expenses</div></div>
+        <div class="stat-plate accent"><div class="num">${fmtMoney(v.net)}</div><div class="lbl">Net Profit</div></div>
+        <div class="stat-plate"><div class="num">${fmtMoney(v.aqShare)}</div><div class="lbl">Aquib ${v.aqPct}%</div></div>
+        <div class="stat-plate"><div class="num">${fmtMoney(v.hsShare)}</div><div class="lbl">Hassan ${v.hsPct}%</div></div>
+      </div>
+      <div class="row-meta" style="margin:0 0 10px;"><span><b>Billed:</b> ${fmtMoney(v.billed)}</span><span><b>Mila:</b> ${fmtMoney(v.received)}</span>${cats.map(x=>`<span>${esc(x.l)}: ${fmtMoney(x.t)}</span>`).join('')}</div>
+      ${cl?`<div class="login-hint" style="margin:0 0 10px;">${cl.closedBy?esc(cl.closedBy)+' ne ':''}${cl.closedAt?fmtDate(cl.closedAt.slice(0,10)):''} ko close kiya. Is mahine ke bill aur expenses ab lock hain.</div><button class="btn btn-danger btn-sm" onclick="reopenMonth('${pMonth}')">Mahina dobara kholo</button>`
+      :isPast?`<button class="btn btn-primary" onclick="closeMonth('${pMonth}')">Mahina close karo (owner approval)</button>`:`<div class="login-hint" style="margin:0;">Chalu mahina mahine ke baad hi close hota hai.</div>`}
+    </div>
+    <div class="dash-grid" style="margin-bottom:14px;">${pCard('Aquib',A)}${pCard('Hassan',H)}</div>
+    <div class="section-head"><div class="group-label" style="margin:0;">Capital (machinery / investment)</div><button class="btn btn-ghost btn-sm" onclick="openCapitalForm()">${ICON.plus} Capital</button></div>
+    <div class="data-list" style="margin-bottom:14px;">${CAPITAL.length?CAPITAL.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(c=>`<div class="row-card"><div class="row-top"><div><div class="row-title">${partnerLabel(c.partner)} · ${c.kind==='machinery'?'Machinery':'Other capital'}</div><div class="row-sub">${fmtDate(c.date)}${c.description?' · '+esc(c.description):''}</div></div><div style="display:flex;align-items:center;gap:6px;"><span class="plate steel">${fmtMoney(c.amount)}</span><div class="row-actions"><button class="icon-btn" aria-label="Edit capital" onclick="openCapitalForm('${c.id}')">${ICON.edit}</button><button class="icon-btn" aria-label="Delete capital" onclick="deleteCapital('${c.id}')">${ICON.trash}</button></div></div></div></div>`).join(''):`<div class="empty-mini">Abhi koi capital entry nahi.</div>`}</div>
+    <div class="section-head"><div class="group-label" style="margin:0;">Drawings (profit nikala)</div><button class="btn btn-ghost btn-sm" onclick="openDrawingForm()">${ICON.plus} Drawing</button></div>
+    <div class="data-list" style="margin-bottom:14px;">${DRAWINGS.length?DRAWINGS.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(d=>`<div class="row-card"><div class="row-top"><div><div class="row-title">${partnerLabel(d.partner)}</div><div class="row-sub">${fmtDate(d.date)}${d.notes?' · '+esc(d.notes):''}</div></div><div style="display:flex;align-items:center;gap:6px;"><span class="plate amber">${fmtMoney(d.amount)}</span><div class="row-actions"><button class="icon-btn" aria-label="Edit drawing" onclick="openDrawingForm('${d.id}')">${ICON.edit}</button><button class="icon-btn" aria-label="Delete drawing" onclick="deleteDrawing('${d.id}')">${ICON.trash}</button></div></div></div></div>`).join(''):`<div class="empty-mini">Abhi koi drawing nahi.</div>`}</div>
+    <div class="group-label">Band mahine</div>
+    <div class="data-list">${CLOSINGS.filter(c=>c.status==='closed').sort((a,b)=>b.month.localeCompare(a.month)).map(c=>`<div class="row-card"><div class="row-top"><div><div class="row-title">${monthLabel(c.month)}</div><div class="row-sub">Profit ${fmtMoney(c.net)}</div></div><div class="row-meta" style="margin:0;"><span>Aquib ${fmtMoney(c.aqShare)}</span><span>Hassan ${fmtMoney(c.hsShare)}</span></div></div></div>`).join('')||`<div class="empty-mini">Abhi koi mahina close nahi hua.</div>`}</div>`;
+}
+async function closeMonth(m){
+  const f=monthFig(m);
+  if(!confirm(monthLabel(m)+' close karein?\n\nRevenue '+fmtMoney(f.revenue)+' − Expenses '+fmtMoney(f.expenses)+' = Profit '+fmtMoney(f.net)+'\nAquib '+fmtMoney(f.aqShare)+' · Hassan '+fmtMoney(f.hsShare)+'\n\nClose hone par is mahine ke bill aur expenses lock ho jayenge.')) return;
+  const {error}=await sb.rpc('dieshop_close_month',{p_month:m,p_notes:''});
+  if(error){showToast(error.message,true);return;}
+  await fetchFinance(); renderAll(); showToast(monthLabel(m)+' close ho gaya.');
+}
+async function reopenMonth(m){
+  if(!confirm(monthLabel(m)+' dobara kholein? Is mahine ke bill aur expenses phir badle ja sakenge aur dobara close karna hoga.')) return;
+  const {error}=await sb.rpc('dieshop_reopen_month',{p_month:m});
+  if(error){showToast(error.message,true);return;}
+  await fetchFinance(); renderAll(); showToast('Mahina khul gaya.');
+}
+function partnerSelect(sel){return `<select id="f_partner">${PARTNERS.map(p=>`<option value="${p.v}" ${sel===p.v?'selected':''}>${p.l}</option>`).join('')}</select>`;}
+function openCapitalForm(id){
+  const c=id?CAPITAL.find(x=>x.id===id):null;
+  document.getElementById('modalTitle').textContent=c?'Edit Capital':'Add Capital';
+  document.getElementById('modalBody').innerHTML=`
+    <div class="field-row"><div class="field"><label for="f_date">Date</label><input id="f_date" type="date" value="${c?c.date:todayISO()}"></div><div class="field"><label for="f_amount">Amount (₹) *</label><input id="f_amount" type="number" inputmode="decimal" min="0" step="any" value="${c?c.amount:''}"></div></div>
+    <div class="field-row"><div class="field"><label for="f_partner">Kisne lagaya</label>${partnerSelect(c?c.partner:'aquib')}</div><div class="field"><label for="f_kind">Type</label><select id="f_kind"><option value="machinery" ${c&&c.kind==='machinery'?'selected':''}>Machinery</option><option value="other" ${c&&c.kind==='other'?'selected':''}>Other capital</option></select></div></div>
+    <div class="field"><label for="f_desc">Detail</label><input id="f_desc" value="${esc(c?c.description:'')}" placeholder="e.g. Laser cutting machine"></div>`;
+  document.getElementById('modalSaveBtn').onclick=async()=>{
+    const amount=Number(document.getElementById('f_amount').value)||0;
+    if(!(amount>0)){showToast('Amount likho (0 se zyada).',true);return;}
+    const {error}=await sb.from('dieshop_capital').upsert({id:c?c.id:crypto.randomUUID(),entry_date:document.getElementById('f_date').value||todayISO(),partner:document.getElementById('f_partner').value,kind:document.getElementById('f_kind').value,amount,description:document.getElementById('f_desc').value.trim()},{onConflict:'id'});
+    if(error){showToast(error.message,true);return;}
+    await fetchFinance(); closeModal(); renderAll(); showToast('Capital save ho gaya.');
+  };
+  openModal();
+}
+async function deleteCapital(id){
+  if(!confirm('Ye capital entry delete karein?')) return;
+  const {error}=await sb.from('dieshop_capital').delete().eq('id',id);
+  if(error){showToast(error.message,true);return;}
+  await fetchFinance(); renderAll(); showToast('Delete ho gaya.');
+}
+function openDrawingForm(id){
+  const d=id?DRAWINGS.find(x=>x.id===id):null;
+  document.getElementById('modalTitle').textContent=d?'Edit Drawing':'Add Drawing';
+  document.getElementById('modalBody').innerHTML=`
+    <div class="field-row"><div class="field"><label for="f_date">Date</label><input id="f_date" type="date" value="${d?d.date:todayISO()}"></div><div class="field"><label for="f_amount">Amount (₹) *</label><input id="f_amount" type="number" inputmode="decimal" min="0" step="any" value="${d?d.amount:''}"></div></div>
+    <div class="field"><label for="f_partner">Kisne nikala</label>${partnerSelect(d?d.partner:'aquib')}</div>
+    <div class="field"><label for="f_notes">Notes</label><input id="f_notes" value="${esc(d?d.notes:'')}"></div>`;
+  document.getElementById('modalSaveBtn').onclick=async()=>{
+    const amount=Number(document.getElementById('f_amount').value)||0;
+    if(!(amount>0)){showToast('Amount likho (0 se zyada).',true);return;}
+    const {error}=await sb.from('dieshop_drawings').upsert({id:d?d.id:crypto.randomUUID(),draw_date:document.getElementById('f_date').value||todayISO(),partner:document.getElementById('f_partner').value,amount,notes:document.getElementById('f_notes').value.trim()},{onConflict:'id'});
+    if(error){showToast(error.message,true);return;}
+    await fetchFinance(); closeModal(); renderAll(); showToast('Drawing save ho gayi.');
+  };
+  openModal();
+}
+async function deleteDrawing(id){
+  if(!confirm('Ye drawing delete karein?')) return;
+  const {error}=await sb.from('dieshop_drawings').delete().eq('id',id);
+  if(error){showToast(error.message,true);return;}
+  await fetchFinance(); renderAll(); showToast('Delete ho gaya.');
 }
 
 /* ===================== MODAL ===================== */
@@ -2330,7 +2592,7 @@ async function enter(user){
   ME=Object.assign({},data,{email:user.email});
   document.getElementById('userBtn').textContent=ME.display_name;
   document.body.classList.add('authed');
-  if(activeTab==='team'&&!isOwner()) activeTab='dashboard';
+  if((activeTab==='team'||activeTab==='partnership')&&!isOwner()) activeTab='dashboard';
   renderTabs();
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.getElementById('sec-'+activeTab).classList.add('active');
