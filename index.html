@@ -202,6 +202,7 @@
   @media (max-width:680px){.activity-grid{grid-template-columns:1fr;}}
 
   /* ---------- Toolbar / search ---------- */
+  body.no-fin .fin{display:none!important;}
   .toolbar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;}
   .search-input{flex:1;min-width:140px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:16px;background:var(--surface);color:var(--ink);}
   .search-input:focus{outline:none;border-color:var(--accent);}
@@ -491,6 +492,17 @@ function assign(col,arr){
   else if(col==='designs') DESIGNS=arr; else if(col==='payments') PAYMENTS=arr;
 }
 function isOwner(){return !!ME&&ME.role==='owner';}
+function roleOf(){return ME?ME.role:'';}
+function canFinance(){return ['owner','partner','accountant'].includes(roleOf());}
+function isManager(){return ['owner','partner'].includes(roleOf());}
+const ROLE_LABEL={owner:'Owner',partner:'Managing Partner',accountant:'Accountant',designer:'Designer',operator:'Operator'};
+const ROLE_TABS={
+  owner:null,
+  partner:['dashboard','dies','jobs','invoices','reports','expenses','partnership','gallery','cutting','designs','payments','customers','maintenance'],
+  accountant:['dashboard','jobs','invoices','reports','expenses','gallery','payments','customers'],
+  designer:['dashboard','dies','jobs','gallery','designs','customers'],
+  operator:['dashboard','dies','jobs','gallery','cutting','maintenance']};
+function tabAllowed(id){const a=ROLE_TABS[roleOf()];return a===null||(a&&a.includes(id))||(!ME);}
 
 async function fetchCol(col){
   const T=TABLES[col];
@@ -643,7 +655,8 @@ function showToast(msg,isErr){
 /* ===================== NAV ===================== */
 function renderTabs(){
   const nav=document.getElementById('tabs');
-  nav.innerHTML=TABS.filter(t=>(t.id!=='team'&&t.id!=='partnership')||isOwner()).map(t=>`
+  if(!tabAllowed(activeTab)) activeTab='dashboard';
+  nav.innerHTML=TABS.filter(t=>tabAllowed(t.id)).map(t=>`
     <button class="tab-btn ${t.id===activeTab?'active':''}" onclick="switchTab('${t.id}')">
       ${ICON[t.icon]}<span>${t.label}</span>
     </button>`).join('');
@@ -753,11 +766,11 @@ function renderDashboard(){
     <div class="plate-grid plate-grid-sub">
       <div class="stat-plate accent"><div class="num">${dieCutToday}</div><div class="lbl">Dies Cut Today</div></div>
       <div class="stat-plate accent"><div class="num">${designCountToday}</div><div class="lbl">Designs Today</div></div>
-      <div class="stat-plate accent"><div class="num">${fmtMoney(billedToday)}</div><div class="lbl">Billed Today</div></div>
-      <div class="stat-plate accent"><div class="num">${fmtMoney(paymentTotalToday)}</div><div class="lbl">Payment Received Today</div></div>
+      <div class="stat-plate fin accent"><div class="num">${fmtMoney(billedToday)}</div><div class="lbl">Billed Today</div></div>
+      <div class="stat-plate fin accent"><div class="num">${fmtMoney(paymentTotalToday)}</div><div class="lbl">Payment Received Today</div></div>
     </div>
 
-    ${isOwner()?monthCardHtml():''}
+    ${isManager()?monthCardHtml():''}
     <div class="group-label">Overall</div>
     <div class="plate-grid">
       <div class="stat-plate"><div class="num">${totalDies}</div><div class="lbl">Total Dies</div></div>
@@ -765,8 +778,8 @@ function renderDashboard(){
       <div class="stat-plate"><div class="num">${inMaint}</div><div class="lbl">In Maintenance</div></div>
       <div class="stat-plate"><div class="num">${activeOrders}</div><div class="lbl">Open Jobs</div></div>
       <div class="stat-plate"><div class="num">${totalCustomers}</div><div class="lbl">Parties</div></div>
-      <div class="stat-plate accent"><div class="num">${fmtMoney(outstanding)}</div><div class="lbl">Party Outstanding</div></div>
-      <div class="stat-plate"><div class="num">${fmtMoney(revenue)}</div><div class="lbl">Delivered Job Value</div></div>
+      <div class="stat-plate fin accent"><div class="num">${fmtMoney(outstanding)}</div><div class="lbl">Party Outstanding</div></div>
+      <div class="stat-plate fin"><div class="num">${fmtMoney(revenue)}</div><div class="lbl">Delivered Job Value</div></div>
     </div>
 
     <div class="card" style="margin-bottom:14px;">
@@ -1785,8 +1798,8 @@ function renderJobs(){
       <div class="thumbs">${thumbs}</div>
       <div class="row-meta">
         ${j.operator?`<span><b>Operator:</b> ${esc(j.operator)}</span>`:''}
-        <span><b>Charges:</b> ${fmtMoney(t.all)}</span>
-        <span>Design ${fmtMoney(t.d)} · Cutting ${fmtMoney(t.c)}${t.o?' · Other '+fmtMoney(t.o):''}</span>
+        <span class="fin"><b>Charges:</b> ${fmtMoney(t.all)}</span>
+        <span class="fin">Design ${fmtMoney(t.d)} · Cutting ${fmtMoney(t.c)}${t.o?' · Other '+fmtMoney(t.o):''}</span>
       </div>
       <div class="row-meta" style="margin-top:4px;">${j.items.map(i=>`<span>${esc(i.designName)} ×${i.qty} (${esc(svcLabel(i.service))})</span>`).join('')}</div>
       ${j.notes?`<div class="row-meta" style="margin-top:4px;">${esc(j.notes)}</div>`:''}
@@ -1846,11 +1859,11 @@ function renderJobItems(){
         <div class="field"><label>Qty *</label>${num(i,'qty',1)}</div>
       </div>
       <div class="field"><label>Service</label><select onchange="JF.items[${i}].service=this.value">${SERVICES.map(s=>`<option value="${s.v}" ${it.service===s.v?'selected':''}>${s.l}</option>`).join('')}</select></div>
-      <div class="field-row">
+      <div class="field-row fin">
         <div class="field"><label>Designing ₹</label>${num(i,'designingCharge',0)}</div>
         <div class="field"><label>Cutting ₹</label>${num(i,'cuttingCharge',0)}</div>
       </div>
-      <div class="field"><label>Other charges ₹</label>${num(i,'otherCharge',0)}</div>
+      <div class="field fin"><label>Other charges ₹</label>${num(i,'otherCharge',0)}</div>
       <div>
         <div class="group-label" style="margin:0;">Image * (kam se kam 1)</div>
         <div class="thumbs">${it.images.map((g,k)=>`<span class="thumb-wrap"><img class="thumb" ${g.existing?`data-path="${esc(g.path)}"`:`src="${g.preview}"`} alt=""><button type="button" class="thumb-x" aria-label="Remove image" onclick="removeJobImg(${i},${k})">&times;</button></span>`).join('')}</div>
@@ -2423,7 +2436,7 @@ function partnerTotals(k){
 }
 function renderPartnership(){
   const el=document.getElementById('sec-partnership');
-  if(!isOwner()){el.innerHTML='';return;}
+  if(!isManager()){el.innerHTML='';return;}
   if(!READY){el.innerHTML=loadingBlock();return;}
   const cl=closingFor(pMonth), f=monthFig(pMonth);
   const v=cl?{revenue:cl.revenue,billed:cl.billed,received:cl.received,expenses:cl.expenses,net:cl.net,aqShare:cl.aqShare,hsShare:cl.hsShare,aqPct:cl.aqPct,hsPct:cl.hsPct}:f;
@@ -2454,6 +2467,7 @@ function renderPartnership(){
     <div class="data-list" style="margin-bottom:14px;">${DRAWINGS.length?DRAWINGS.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(d=>`<div class="row-card"><div class="row-top"><div><div class="row-title">${partnerLabel(d.partner)}</div><div class="row-sub">${fmtDate(d.date)}${d.notes?' · '+esc(d.notes):''}</div></div><div style="display:flex;align-items:center;gap:6px;"><span class="plate amber">${fmtMoney(d.amount)}</span><div class="row-actions"><button class="icon-btn" aria-label="Edit drawing" onclick="openDrawingForm('${d.id}')">${ICON.edit}</button><button class="icon-btn" aria-label="Delete drawing" onclick="deleteDrawing('${d.id}')">${ICON.trash}</button></div></div></div></div>`).join(''):`<div class="empty-mini">Abhi koi drawing nahi.</div>`}</div>
     <div class="group-label">Band mahine</div>
     <div class="data-list">${CLOSINGS.filter(c=>c.status==='closed').sort((a,b)=>b.month.localeCompare(a.month)).map(c=>`<div class="row-card"><div class="row-top"><div><div class="row-title">${monthLabel(c.month)}</div><div class="row-sub">Profit ${fmtMoney(c.net)}</div></div><div class="row-meta" style="margin:0;"><span>Aquib ${fmtMoney(c.aqShare)}</span><span>Hassan ${fmtMoney(c.hsShare)}</span></div></div></div>`).join('')||`<div class="empty-mini">Abhi koi mahina close nahi hua.</div>`}</div>`;
+  if(!isOwner()) el.querySelectorAll('button').forEach(b=>b.remove());
 }
 async function closeMonth(m){
   const f=monthFig(m);
@@ -2564,7 +2578,7 @@ function renderTeam(){
         <div class="row-top">
           <div><div class="row-title">${esc(t.display_name)}${self?' (you)':''}</div><div class="row-sub">Username: ${esc(t.username)}</div></div>
           <div style="display:flex;gap:6px;align-items:center;">
-            <span class="plate ${t.role==='owner'?'steel':'gray'}">${esc(t.role)}</span>
+            <span class="plate ${t.role==='owner'?'steel':'gray'}">${esc(ROLE_LABEL[t.role]||t.role)}</span>
             <span class="plate ${t.active?'green':'red'}">${t.active?'Active':'Disabled'}</span>
           </div>
         </div>
@@ -2581,7 +2595,7 @@ function openWorkerForm(){
     <div class="field"><label for="w_name">Naam *</label><input id="w_name" placeholder="e.g. Ramesh"></div>
     <div class="field"><label for="w_user">Username * (small letters/numbers)</label><input id="w_user" autocapitalize="none" autocomplete="off" placeholder="e.g. ramesh"></div>
     <div class="field"><label for="w_pass">Password * (kam se kam 8)</label><input id="w_pass" type="text" autocomplete="off"></div>
-    <div class="field"><label for="w_role">Role</label><select id="w_role"><option value="worker">Worker</option><option value="owner">Owner</option></select></div>`;
+    <div class="field"><label for="w_role">Role</label><select id="w_role"><option value="operator">Operator (production)</option><option value="designer">Designer</option><option value="accountant">Accountant</option><option value="partner">Managing Partner</option><option value="owner">Owner</option></select></div>`;
   openModal();
   document.getElementById('modalSaveBtn').onclick=saveWorker;
 }
@@ -2623,7 +2637,7 @@ function ownMail(){return ME&&ME.email&&ME.email.toLowerCase().endsWith('@'+MAIL
 function openAccount(){
   document.getElementById('modalTitle').textContent='Account';
   document.getElementById('modalBody').innerHTML=`
-    <div><div class="row-title">${esc(ME.display_name)}</div><div class="row-sub">${esc(ME.username)} · ${esc(ME.role)}</div></div>
+    <div><div class="row-title">${esc(ME.display_name)}</div><div class="row-sub">${esc(ME.username)} · ${esc(ROLE_LABEL[ME.role]||ME.role)}</div></div>
     <div class="acct-actions">
       ${ownMail()?`<button class="btn btn-ghost" onclick="openPasswordForm()">Change password</button>`:''}
       <button class="btn btn-danger" onclick="logout()">Log out</button>
@@ -2667,7 +2681,8 @@ async function enter(user){
   ME=Object.assign({},data,{email:user.email});
   document.getElementById('userBtn').textContent=ME.display_name;
   document.body.classList.add('authed');
-  if((activeTab==='team'||activeTab==='partnership')&&!isOwner()) activeTab='dashboard';
+  if(!tabAllowed(activeTab)) activeTab='dashboard';
+  document.body.classList.toggle('no-fin',!!ME&&!canFinance());
   renderTabs();
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.getElementById('sec-'+activeTab).classList.add('active');
