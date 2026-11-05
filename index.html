@@ -348,6 +348,7 @@
   <section class="section" id="sec-dies"></section>
   <section class="section" id="sec-jobs"></section>
   <section class="section" id="sec-invoices"></section>
+  <section class="section" id="sec-reports"></section>
   <section class="section" id="sec-expenses"></section>
   <section class="section" id="sec-partnership"></section>
   <section class="section" id="sec-gallery"></section>
@@ -381,6 +382,7 @@
   <div id="vwCap"></div>
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
 /* ===================== ICONS ===================== */
@@ -409,6 +411,7 @@ const TABS=[
   {id:'dies',label:'Dies',icon:'dies'},
   {id:'jobs',label:'Jobs',icon:'orders'},
   {id:'invoices',label:'Invoices',icon:'payments'},
+  {id:'reports',label:'Reports',icon:'design'},
   {id:'expenses',label:'Expenses',icon:'maintenance'},
   {id:'partnership',label:'Partnership',icon:'customers'},
   {id:'gallery',label:'Gallery',icon:'design'},
@@ -663,6 +666,7 @@ function renderAll(){
   renderDies();
   renderJobs();
   renderInvoices();
+  renderReports();
   renderExpenses();
   renderPartnership();
   renderGallery();
@@ -2195,6 +2199,77 @@ function openBusinessForm(){
     if(error){showToast(error.message,true);return;}
     await fetchSettings(); closeModal(); showToast('Business details save ho gayi.');
   };
+}
+
+/* ===================== DAILY REPORTS ===================== */
+let repDate=todayISO();
+function dayReport(d){
+  const jobs=JOBS.filter(j=>j.date===d);
+  const sumItems=(arr)=>arr.reduce((a,j)=>{const t=jobTotals(j);a.dies+=j.items.reduce((s,i)=>s+(Number(i.qty)||0),0);a.design+=t.d;a.cut+=t.c;a.other+=t.o;a.total+=t.all;return a;},{dies:0,design:0,cut:0,other:0,total:0});
+  const T=sumItems(jobs);
+  const group=(keyFn)=>{const m={};jobs.forEach(j=>{const k=keyFn(j)||'—';(m[k]=m[k]||[]).push(j);});return Object.keys(m).sort().map(k=>({name:k,jobs:m[k].length,...sumItems(m[k])}));};
+  const byParty=group(j=>partyName(j.customerId)), byOp=group(j=>j.operator);
+  const delivered=JOBS.filter(j=>j.status==='Delivered'&&((META.jobs[j.id]||{}).at||'').slice(0,10)===d);
+  const invs=INVOICES.filter(i=>i.date===d&&i.status==='issued');
+  const billed=r2(invs.reduce((s,i)=>s+i.total,0));
+  const pays=PAYMENTS.filter(p=>p.date===d);
+  const collected=r2(pays.reduce((s,p)=>s+(Number(p.amount)||0),0));
+  const modes={};pays.forEach(p=>{const m=p.mode||'—';modes[m]=r2((modes[m]||0)+(Number(p.amount)||0));});
+  const exps=EXPENSES.filter(e=>e.date===d);
+  const expTotal=r2(exps.reduce((s,e)=>s+e.amount,0));
+  const pendingJobs=JOBS.filter(j=>j.status!=='Delivered');
+  const pendingParties=CUSTOMERS.map(c=>({name:c.name,bal:partyBalance(c)})).filter(x=>x.bal>0.004).sort((a,b)=>b.bal-a.bal);
+  return {d,jobs,T,byParty,byOp,delivered,invs,billed,pays,collected,modes,exps,expTotal,pendingJobs,pendingParties,pendingTotal:r2(pendingParties.reduce((s,x)=>s+x.bal,0))};
+}
+function repTable(head,rows,right){return `<table><tr>${head.map((x,i)=>`<th class="${right.includes(i)?'r':''}">${esc(x)}</th>`).join('')}</tr>${rows.length?rows.map(r=>`<tr>${r.map((x,i)=>`<td class="${right.includes(i)?'r':''}">${esc(String(x))}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${head.length}" class="muted">Kuch nahi</td></tr>`}</table>`;}
+function repSections(R){
+  const m=fmtMoney;
+  const grpRows=(g)=>g.map(x=>[x.name,x.jobs,x.dies,m(x.design),m(x.cut),m(x.total)]);
+  return [
+    {t:'Summary',head:['Item','Value'],rows:[['Jobs banaye',R.jobs.length],['Dies (qty)',R.T.dies],['Designing income',m(R.T.design)],['Cutting income',m(R.T.cut)],['Other charges',m(R.T.other)],['Job value (total)',m(R.T.total)],['Delivered (status aaj badla)',R.delivered.length],['Invoices issue',R.invs.length+' · '+m(R.billed)],['Collection (payments mile)',m(R.collected)],['Expenses',m(R.expTotal)],['Collection − Expenses',m(r2(R.collected-R.expTotal))],['Pending jobs (abhi)',R.pendingJobs.length],['Party pending balance (abhi)',m(R.pendingTotal)]],right:[1]},
+    {t:'Party-wise production',head:['Party','Jobs','Dies','Designing','Cutting','Total'],rows:grpRows(R.byParty),right:[1,2,3,4,5]},
+    {t:'Operator-wise production',head:['Operator','Jobs','Dies','Designing','Cutting','Total'],rows:grpRows(R.byOp),right:[1,2,3,4,5]},
+    {t:'Jobs',head:['Job','Party','Operator','Status','Value'],rows:R.jobs.map(j=>[j.jobNo,partyName(j.customerId),j.operator||'—',j.status,m(jobTotals(j).all)]),right:[4]},
+    {t:'Invoices',head:['Invoice','Party','Total'],rows:R.invs.map(i=>[i.invoiceNo||i.id,partyName(i.customerId),m(i.total)]),right:[2]},
+    {t:'Collections',head:['Party','Mode','Amount'],rows:R.pays.map(p=>[partyName(p.customerId),p.mode||'—',m(Number(p.amount)||0)]),right:[2]},
+    {t:'Expenses',head:['Category','Kisko','Notes','Amount'],rows:R.exps.map(e=>[catLabel(e.category),e.paidTo||'',e.notes||'',m(e.amount)]),right:[3]},
+    {t:'Pending balances (party)',head:['Party','Balance'],rows:R.pendingParties.map(x=>[x.name,m(x.bal)]),right:[1]},
+    {t:'Pending production (abhi)',head:['Job','Party','Date','Status'],rows:R.pendingJobs.map(j=>[j.jobNo,partyName(j.customerId),fmtDate(j.date),j.status]),right:[]}
+  ];
+}
+function renderReports(){
+  const el=document.getElementById('sec-reports');
+  if(!READY){el.innerHTML=loadingBlock();return;}
+  const R=dayReport(repDate), S=repSections(R);
+  el.innerHTML=`
+    <div class="section-head"><div><div class="section-title">Daily Report</div><div class="section-sub">${fmtDate(repDate)}</div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn btn-ghost btn-sm" onclick="printReport()">PDF / Print</button><button class="btn btn-primary btn-sm" onclick="exportReportXlsx()">Excel</button></div></div>
+    <div class="toolbar"><input class="date-filter" type="date" value="${repDate}" onchange="repDate=this.value||todayISO();renderReports()" aria-label="Date"><button class="chip-btn" onclick="repDate=todayISO();renderReports()">Aaj</button></div>
+    <div class="plate-grid" style="margin-bottom:14px;">
+      <div class="stat-plate"><div class="num">${R.jobs.length}</div><div class="lbl">Jobs</div></div>
+      <div class="stat-plate"><div class="num">${R.T.dies}</div><div class="lbl">Dies</div></div>
+      <div class="stat-plate"><div class="num">${fmtMoney(R.T.design)}</div><div class="lbl">Designing</div></div>
+      <div class="stat-plate"><div class="num">${fmtMoney(R.T.cut)}</div><div class="lbl">Cutting</div></div>
+      <div class="stat-plate"><div class="num">${fmtMoney(R.collected)}</div><div class="lbl">Collection</div></div>
+      <div class="stat-plate"><div class="num">${fmtMoney(R.expTotal)}</div><div class="lbl">Expenses</div></div>
+    </div>
+    ${S.slice(1).map(s=>`<div class="card" style="margin-bottom:12px;overflow-x:auto;"><h3>${esc(s.t)}</h3><div class="rep-t">${repTable(s.head,s.rows,s.right)}</div></div>`).join('')}`;
+}
+function printReport(){
+  const R=dayReport(repDate), S=repSections(R);
+  const n=SETTINGS.business_name||'Die Shop';
+  printDoc('Daily Report '+repDate,`<div class="top"><div><h1>${esc(n)}</h1><div class="muted">Daily Report</div></div><div class="r"><h2>${fmtDate(repDate)}</h2></div></div>`+S.map(s=>`<h2 style="margin-top:14px;">${esc(s.t)}</h2>${repTable(s.head,s.rows,s.right)}`).join('')+`<div class="foot">Banaya: ${new Date().toLocaleString('en-IN')}</div>`);
+}
+function exportReportXlsx(){
+  const R=dayReport(repDate), S=repSections(R);
+  const strip=v=>typeof v==='string'?v:v;
+  if(typeof XLSX==='undefined'){
+    const csv='﻿'+S.map(s=>s.t+'\n'+[s.head,...s.rows].map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n')).join('\n\n');
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='daily-report-'+repDate+'.csv';a.click();showToast('Excel library load nahi hui, CSV bani.',true);return;
+  }
+  const wb=XLSX.utils.book_new();
+  S.forEach(s=>{const ws=XLSX.utils.aoa_to_sheet([s.head,...s.rows.map(r=>r.map(strip))]);ws['!cols']=s.head.map(()=>({wch:22}));XLSX.utils.book_append_sheet(wb,ws,s.t.replace(/[^A-Za-z0-9 -]/g,'').slice(0,31));});
+  XLSX.writeFile(wb,'daily-report-'+repDate+'.xlsx');
 }
 
 /* ===================== EXPENSES, CAPITAL, PARTNERSHIP ===================== */
