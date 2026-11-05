@@ -347,6 +347,7 @@
   <section class="section" id="sec-dashboard"></section>
   <section class="section" id="sec-dies"></section>
   <section class="section" id="sec-jobs"></section>
+  <section class="section" id="sec-invoices"></section>
   <section class="section" id="sec-gallery"></section>
   <section class="section" id="sec-cutting"></section>
   <section class="section" id="sec-designs"></section>
@@ -405,6 +406,7 @@ const TABS=[
   {id:'dashboard',label:'Dashboard',icon:'dashboard'},
   {id:'dies',label:'Dies',icon:'dies'},
   {id:'jobs',label:'Jobs',icon:'orders'},
+  {id:'invoices',label:'Invoices',icon:'payments'},
   {id:'gallery',label:'Gallery',icon:'design'},
   {id:'cutting',label:'Cutting Log',icon:'cutting'},
   {id:'designs',label:'Designs',icon:'design'},
@@ -460,7 +462,7 @@ const SB_KEY='sb_publishable_Le2efyGVTixAxEtJF8tK-w_GwncPKy5';
 const MAIL_DOMAIN='dieshop.rhstockandbill.in';
 const sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,storageKey:'dietrack-auth'}});
 const COLS=['dies','customers','orders','maintenance','cutting','designs','payments'];
-const FORM_COL={Die:'dies',Customer:'customers',Job:'jobs',Order:'orders',Maint:'maintenance',Cutting:'cutting',Design:'designs',Payment:'payments'};
+const FORM_COL={Die:'dies',Customer:'customers',Job:'jobs',Invoice:'invoices',Order:'orders',Maint:'maintenance',Cutting:'cutting',Design:'designs',Payment:'payments'};
 let ME=null, READY=false, slow=false, subErr='', writing=0, CHAN=null, POLL=null;
 const LAST={}, META={};
 COLS.forEach(c=>{LAST[c]={};META[c]={};});
@@ -470,8 +472,8 @@ const TABLES={
     fromRow:r=>({id:r.id,partyNo:r.party_no,name:r.name,category:r.category,contact:r.contact,phone:r.phone,email:r.email,address:r.address,gstin:r.gstin,openingBalance:Number(r.opening_balance)||0,discountType:r.discount_type,discountValue:Number(r.discount_value)||0,notes:r.notes,createdAt:r.created_at}),
     toRow:o=>({id:o.id,name:o.name,category:o.category||'regular',contact:o.contact||'',phone:o.phone||'',email:o.email||'',address:o.address||'',gstin:o.gstin||'',opening_balance:Number(o.openingBalance)||0,discount_type:o.discountType||'percent',discount_value:Number(o.discountValue)||0,notes:o.notes||''})},
   payments:{table:'dieshop_payments',
-    fromRow:r=>({id:r.id,customerId:r.party_id,date:r.pay_date,amount:Number(r.amount)||0,mode:r.mode,orderId:r.order_ref,notes:r.notes,createdAt:r.created_at}),
-    toRow:o=>({id:o.id,party_id:o.customerId,pay_date:o.date,amount:Number(o.amount)||0,mode:o.mode||'Cash',order_ref:o.orderId||'',notes:o.notes||''})}
+    fromRow:r=>({id:r.id,customerId:r.party_id,date:r.pay_date,amount:Number(r.amount)||0,mode:r.mode,orderId:r.order_ref,invoiceId:r.invoice_id||'',notes:r.notes,createdAt:r.created_at}),
+    toRow:o=>({id:o.id,party_id:o.customerId,pay_date:o.date,amount:Number(o.amount)||0,mode:o.mode||'Cash',order_ref:o.orderId||'',invoice_id:o.invoiceId||null,notes:o.notes||''})}
 };
 
 function colName(key){return key.replace('dieshop:','');}
@@ -511,7 +513,7 @@ async function fetchCol(col){
 }
 async function refreshAll(){
   if(document.hidden||writing>0||!ME) return;
-  try{ await Promise.all([...COLS.map(fetchCol),fetchJobs(),fetchProfiles()]); subErr=''; updateStatus(); scheduleRender(); }catch(e){}
+  try{ await Promise.all([...COLS.map(fetchCol),fetchJobs(),fetchProfiles(),fetchInvoices(),fetchSettings()]); subErr=''; updateStatus(); scheduleRender(); }catch(e){}
 }
 function applyTableChange(col,p){
   const T=TABLES[col];
@@ -545,7 +547,7 @@ function applyChange(p){
 async function startData(){
   READY=false; subErr=''; updateStatus(); renderAll();
   const slowTimer=setTimeout(()=>{slow=true;updateStatus();},10000);
-  try{ await Promise.all([...COLS.map(fetchCol),fetchJobs(),fetchProfiles()]); READY=true; }
+  try{ await Promise.all([...COLS.map(fetchCol),fetchJobs(),fetchProfiles(),fetchInvoices(),fetchSettings()]); READY=true; }
   catch(e){ subErr='load'; READY=true; }
   clearTimeout(slowTimer); slow=false;
   updateStatus(); renderAll();
@@ -555,6 +557,8 @@ async function startData(){
     .on('postgres_changes',{event:'*',schema:'public',table:'dieshop_jobs'},jobsChanged)
     .on('postgres_changes',{event:'*',schema:'public',table:'dieshop_job_items'},jobsChanged)
     .on('postgres_changes',{event:'*',schema:'public',table:'dieshop_job_images'},jobsChanged)
+    .on('postgres_changes',{event:'*',schema:'public',table:'dieshop_invoices'},jobsChanged)
+    .on('postgres_changes',{event:'*',schema:'public',table:'dieshop_invoice_lines'},jobsChanged)
     .subscribe(st=>{ /* polling below covers any gap */ });
   POLL=setInterval(refreshAll,60000);
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refreshAll(); });
@@ -650,6 +654,7 @@ function renderAll(){
   renderDashboard();
   renderDies();
   renderJobs();
+  renderInvoices();
   renderGallery();
   renderCutting();
   renderDesigns();
@@ -668,6 +673,7 @@ function renderDashboard(){
   const inMaint=DIES.filter(d=>d.status==='Maintenance').length;
   const activeOrders=JOBS.filter(j=>!['Delivered','Closed'].includes(j.status)).length;
   const totalCustomers=CUSTOMERS.length;
+  const billedToday=INVOICES.filter(i=>i.status==='issued'&&i.date===todayISO()).reduce((s,i)=>s+i.total,0);
   const outstanding=CUSTOMERS.reduce((s,c)=>s+Math.max(0,partyBalance(c)),0);
   const revenue=JOBS.filter(j=>['Delivered','Closed'].includes(j.status)).reduce((s,j)=>s+jobTotals(j).all,0);
 
@@ -733,6 +739,7 @@ function renderDashboard(){
     <div class="plate-grid plate-grid-sub">
       <div class="stat-plate accent"><div class="num">${dieCutToday}</div><div class="lbl">Dies Cut Today</div></div>
       <div class="stat-plate accent"><div class="num">${designCountToday}</div><div class="lbl">Designs Today</div></div>
+      <div class="stat-plate accent"><div class="num">${fmtMoney(billedToday)}</div><div class="lbl">Billed Today</div></div>
       <div class="stat-plate accent"><div class="num">${fmtMoney(paymentTotalToday)}</div><div class="lbl">Payment Received Today</div></div>
     </div>
 
@@ -878,8 +885,9 @@ async function deleteDie(id){
 const CAT=[{v:'regular',l:'Regular Party',c:'steel'},{v:'walkin',l:'Walk-in',c:'gray'},{v:'related',l:'Related Party',c:'amber'}];
 function catPlate(v){const m=CAT.find(x=>x.v===v)||CAT[0];return `<span class="plate ${m.c}">${m.l}</span>`;}
 function partyReceived(id){return PAYMENTS.filter(p=>p.customerId===id).reduce((s,p)=>s+(Number(p.amount)||0),0);}
-/* Outstanding = opening + billed - received. Billed is 0 until invoicing arrives in Phase 5. */
-function partyBalance(c){return Math.round(((Number(c.openingBalance)||0)-partyReceived(c.id))*100)/100;}
+/* Outstanding = opening + billed (issued invoices) - received (all payments). */
+function partyBilled(id){return INVOICES.filter(i=>i.customerId===id&&i.status==='issued').reduce((s,i)=>s+i.total,0);}
+function partyBalance(c){return Math.round(((Number(c.openingBalance)||0)+partyBilled(c.id)-partyReceived(c.id))*100)/100;}
 function balHtml(b){
   if(b>0) return `<span class="overdue"><b>Baaki:</b> ${fmtMoney(b)}</span>`;
   if(b<0) return `<span style="color:var(--green)"><b>Advance:</b> ${fmtMoney(-b)}</span>`;
@@ -942,21 +950,30 @@ function renderCustomers(){
     </div>`;
   }).join('');
 }
+function ledgerEntries(c){
+  const rows=[];
+  INVOICES.filter(i=>i.customerId===c.id&&i.status==='issued').forEach(i=>rows.push({date:i.date,at:i.createdAt||'',label:'Invoice '+i.invoiceNo,debit:i.total,credit:0}));
+  PAYMENTS.filter(p=>p.customerId===c.id).forEach(p=>{const inv=INVOICES.find(x=>x.id===p.invoiceId);rows.push({date:p.date,at:p.createdAt||'',label:'Payment ('+(p.mode||'')+')'+(inv?' - '+inv.invoiceNo:''),debit:0,credit:Number(p.amount)||0});});
+  rows.sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.at||'').localeCompare(b.at||''));
+  let run=Number(c.openingBalance)||0;
+  rows.forEach(r=>{run=Math.round((run+r.debit-r.credit)*100)/100;r.balance=run;});
+  return rows;
+}
 function openLedger(id){
   const c=CUSTOMERS.find(x=>x.id===id); if(!c) return;
-  const pays=PAYMENTS.filter(p=>p.customerId===id).sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.createdAt||'').localeCompare(b.createdAt||''));
-  let run=Number(c.openingBalance)||0;
-  const rows=pays.map(p=>{run=Math.round((run-(Number(p.amount)||0))*100)/100;return `<li><span class="mtitle">${fmtDate(p.date)} · ${esc(p.mode||'')}<br><span style="font-weight:400;color:var(--ink-soft)">Jama ${fmtMoney(p.amount)}</span></span><span class="msub" style="${run>0?'color:var(--red)':'color:var(--green)'}">${run>=0?'Baaki ':'Advance '}${fmtMoney(Math.abs(run))}</span></li>`;}).join('');
+  const rows=ledgerEntries(c);
+  const li=rows.map(r=>`<li><span class="mtitle">${fmtDate(r.date)} · ${esc(r.label)}<br><span style="font-weight:400;color:var(--ink-soft)">${r.debit?'Bill '+fmtMoney(r.debit):'Jama '+fmtMoney(r.credit)}</span></span><span class="msub" style="${r.balance>0?'color:var(--red)':'color:var(--green)'}">${r.balance>=0?'Baaki ':'Advance '}${fmtMoney(Math.abs(r.balance))}</span></li>`).join('');
   document.getElementById('modalTitle').textContent='Ledger';
   document.getElementById('modalBody').innerHTML=`
     <div><div class="row-title">${esc(c.name)}</div><div class="row-sub">${esc(c.partyNo||'')} · ${CAT.find(x=>x.v===c.category)?.l||''}</div></div>
     <div class="plate-grid" style="margin:0;">
       <div class="stat-plate"><div class="num">${fmtMoney(c.openingBalance)}</div><div class="lbl">Opening</div></div>
+      <div class="stat-plate"><div class="num">${fmtMoney(partyBilled(id))}</div><div class="lbl">Billed</div></div>
       <div class="stat-plate"><div class="num">${fmtMoney(partyReceived(id))}</div><div class="lbl">Mila</div></div>
       <div class="stat-plate accent"><div class="num">${fmtMoney(partyBalance(c))}</div><div class="lbl">Outstanding</div></div>
     </div>
-    ${rows?`<ul class="mini-list">${rows}</ul>`:`<div class="empty-mini">Abhi koi payment nahi.</div>`}
-    <div class="login-hint">Invoice (bill) abhi system mein nahi judi hain. Wo aage ke phase mein aayengi, tab ye ledger billed amount bhi dikhayega.</div>`;
+    ${li?`<ul class="mini-list">${li}</ul>`:`<div class="empty-mini">Abhi koi bill ya payment nahi.</div>`}
+    <button class="btn btn-ghost" onclick="printStatement('${id}')">Statement print / PDF</button>`;
   openModal();
   document.getElementById('modalSaveBtn').style.display='none';
 }
@@ -1420,13 +1437,13 @@ function renderPayments(){
   }
   listEl.innerHTML=list.map(p=>{
     const cust=CUSTOMERS.find(x=>x.id===p.customerId);
-    const order=JOBS.find(o=>o.id===p.orderId);
+    const inv=INVOICES.find(o=>o.id===p.invoiceId);
     return `
     <div class="row-card">
       <div class="row-top">
         <div>
           <div class="row-title">${esc(cust?cust.name:'Unknown customer')}</div>
-          <div class="row-sub">${esc(p.mode||'—')}${order?' · '+esc(order.jobNo):''}</div>
+          <div class="row-sub">${esc(p.mode||'—')}${inv?' · '+esc(inv.invoiceNo):' · Advance'}</div>
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
           <span class="plate green">${fmtMoney(p.amount)}</span>
@@ -1438,27 +1455,36 @@ function renderPayments(){
       </div>
       <div class="row-meta"><span><b>Date:</b> ${fmtDate(p.date)}</span></div>
       ${p.notes?`<div class="row-meta" style="margin-top:4px;">${esc(p.notes)}</div>`:''}
+      <div class="team-actions"><button class="btn btn-ghost btn-sm" onclick="printReceipt('${p.id}')">Receipt print / PDF</button></div>
     </div>`;
   }).join('');
 }
-function openPaymentForm(id){
+function openPaymentForm(id,pre){
   if(!CUSTOMERS.length){showToast('Add a customer first.',true);return;}
   const editing=id?PAYMENTS.find(p=>p.id===id):null;
+  pre=pre||{};
   document.getElementById('modalTitle').textContent=editing?'Edit Payment':'Log Payment';
   document.getElementById('modalBody').innerHTML=`
     <div class="field-row">
       <div class="field"><label for="f_date">Date</label><input id="f_date" type="date" value="${editing?editing.date:todayISO()}"></div>
-      <div class="field"><label for="f_amount">Amount (₹) *</label><input id="f_amount" type="number" inputmode="decimal" min="0" value="${editing?editing.amount:''}"></div>
+      <div class="field"><label for="f_amount">Amount (₹) *</label><input id="f_amount" type="number" inputmode="decimal" min="0" value="${editing?editing.amount:(pre.amount||'')}"></div>
     </div>
-    <div class="field"><label for="f_customerId">Customer * <a href="#" onclick="quickParty(event)" style="text-transform:none;letter-spacing:0;color:var(--accent-dark);margin-left:6px;">+ nayi party</a></label><select id="f_customerId">${CUSTOMERS.map(c=>`<option value="${c.id}" ${editing&&editing.customerId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+    <div class="field"><label for="f_customerId">Customer * <a href="#" onclick="quickParty(event)" style="text-transform:none;letter-spacing:0;color:var(--accent-dark);margin-left:6px;">+ nayi party</a></label><select id="f_customerId" onchange="fillPayInvoices()">${CUSTOMERS.map(c=>`<option value="${c.id}" ${(editing?editing.customerId:pre.customerId)===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
     <div class="field-row">
       <div class="field"><label for="f_mode">Mode</label><select id="f_mode">${PAY_MODES.map(m=>`<option value="${m}" ${editing&&editing.mode===m?'selected':''}>${m}</option>`).join('')}</select></div>
-      <div class="field"><label for="f_orderId">Job (optional)</label><select id="f_orderId"><option value="">Koi job nahi</option>${JOBS.map(o=>`<option value="${o.id}" ${editing&&editing.orderId===o.id?'selected':''}>${esc(o.jobNo)}</option>`).join('')}</select></div>
+      <div class="field"><label for="f_invoiceId">Invoice (optional)</label><select id="f_invoiceId"></select></div>
     </div>
     <div class="field"><label for="f_notes">Notes</label><textarea id="f_notes">${esc(editing?.notes)}</textarea></div>
   `;
   document.getElementById('modalSaveBtn').onclick=()=>savePayment(id);
   openModal();
+  fillPayInvoices(editing?editing.invoiceId:(pre.invoiceId||''));
+}
+function fillPayInvoices(sel){
+  const cid=document.getElementById('f_customerId').value, el=document.getElementById('f_invoiceId'); if(!el) return;
+  const cur=(typeof sel==='string')?sel:'';
+  const opts=INVOICES.filter(i=>i.customerId===cid&&i.status==='issued'&&(invDue(i)>0||i.id===cur)).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  el.innerHTML='<option value="">Advance / koi invoice nahi</option>'+opts.map(i=>`<option value="${i.id}" ${i.id===cur?'selected':''}>${esc(i.invoiceNo)} · baaki ${fmtMoney(invDue(i))}</option>`).join('');
 }
 async function savePayment(id){
   const customerId=document.getElementById('f_customerId').value;
@@ -1470,7 +1496,8 @@ async function savePayment(id){
     date:document.getElementById('f_date').value||todayISO(),
     customerId, amount,
     mode:document.getElementById('f_mode').value,
-    orderId:document.getElementById('f_orderId').value||'',
+    orderId:editing?editing.orderId:'',
+    invoiceId:document.getElementById('f_invoiceId').value||'',
     notes:document.getElementById('f_notes').value.trim(),
     createdAt:editing?editing.createdAt:new Date().toISOString(),
   };
@@ -1621,7 +1648,7 @@ async function fetchJobs(){
   });
   META.jobs={};
   JOBS=jr.map(j=>{META.jobs[j.id]={by:j.updated_by_name,at:j.updated_at};
-    return {id:j.id,jobNo:j.job_no,customerId:j.party_id,date:j.job_date,operator:j.operator,status:j.status,notes:j.notes,createdAt:j.created_at,items:itemsByJob[j.id]||[]};});
+    return {id:j.id,jobNo:j.job_no,customerId:j.party_id,date:j.job_date,operator:j.operator,status:j.status,notes:j.notes,invoiceId:j.invoice_id||'',createdAt:j.created_at,items:itemsByJob[j.id]||[]};});
 }
 async function fetchProfiles(){
   const {data}=await sb.from('dieshop_profiles').select('display_name,active');
@@ -1629,7 +1656,7 @@ async function fetchProfiles(){
 }
 function jobsChanged(){
   clearTimeout(JT);
-  JT=setTimeout(()=>{ fetchJobs().then(scheduleRender).catch(()=>{}); },400);
+  JT=setTimeout(()=>{ Promise.all([fetchJobs(),fetchInvoices()]).then(scheduleRender).catch(()=>{}); },400);
 }
 
 /* ----- images: private bucket, short-lived signed links ----- */
@@ -1911,6 +1938,245 @@ function renderGallery(){
     ${ents.length?body:`<div class="empty-state">${ICON.box}<div class="et">Abhi koi image nahi</div><div class="es">Jobs mein die ki images jodoge to yahin party, date aur operator ke hisaab se dikhengi.</div></div>`}`;
 }
 
+/* ===================== INVOICES, RECEIPTS, STATEMENTS ===================== */
+let INVOICES=[], SETTINGS={};
+const r2=n=>Math.round((Number(n)||0)*100)/100;
+function invPaid(i){return r2(PAYMENTS.filter(p=>p.invoiceId===i.id).reduce((s,p)=>s+(Number(p.amount)||0),0));}
+function invDue(i){return r2(i.total-invPaid(i));}
+function invState(i){
+  if(i.status==='cancelled') return {l:'Cancelled',c:'gray'};
+  const d=invDue(i); if(d<=0) return {l:'Paid',c:'green'};
+  return invPaid(i)>0?{l:'Partial',c:'amber'}:{l:'Unpaid',c:'red'};
+}
+async function fetchInvoices(){
+  const [ir,lr]=await Promise.all([pageAll('dieshop_invoices'),pageAll('dieshop_invoice_lines')]);
+  const byInv={}; lr.sort((a,b)=>a.position-b.position).forEach(l=>{(byInv[l.invoice_id]=byInv[l.invoice_id]||[]).push({jobId:l.job_id,kind:l.kind,description:l.description,qty:l.qty,amount:Number(l.amount)||0});});
+  META.invoices={};
+  INVOICES=ir.map(i=>{META.invoices[i.id]={by:i.updated_by_name,at:i.updated_at};
+    return {id:i.id,invoiceNo:i.invoice_no,customerId:i.party_id,date:i.invoice_date,subtotal:Number(i.subtotal)||0,discountType:i.discount_type,discountValue:Number(i.discount_value)||0,
+      discountAmount:Number(i.discount_amount)||0,taxPercent:Number(i.tax_percent)||0,taxAmount:Number(i.tax_amount)||0,total:Number(i.total)||0,status:i.status,notes:i.notes,createdAt:i.created_at,lines:byInv[i.id]||[]};});
+}
+async function fetchSettings(){
+  const {data}=await sb.from('dieshop_settings').select('*');
+  SETTINGS={}; (data||[]).forEach(r=>{SETTINGS[r.key]=r.value;});
+}
+function calcInv(sub,type,val,tax){
+  const disc=type==='percent'?r2(sub*val/100):Math.min(val,sub);
+  const taxAmt=r2((sub-disc)*tax/100);
+  return {disc,taxAmt,total:r2(sub-disc+taxAmt)};
+}
+
+/* ----- print / save-as-PDF documents ----- */
+function printDoc(title,body){
+  const w=window.open('','_blank');
+  if(!w){showToast('Popup block hai. Browser mein popup allow karein.',true);return;}
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>
+    body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0;padding:24px;font-size:13px;line-height:1.45;}
+    .doc{max-width:760px;margin:0 auto;position:relative;}
+    h1{font-size:22px;margin:0 0 2px;} h2{font-size:15px;margin:0;letter-spacing:.08em;}
+    .top{display:flex;justify-content:space-between;gap:16px;border-bottom:2px solid #111;padding-bottom:10px;margin-bottom:14px;}
+    .muted{color:#555;} .r{text-align:right;}
+    table{width:100%;border-collapse:collapse;margin:12px 0;} th,td{border-bottom:1px solid #ccc;padding:7px 6px;text-align:left;vertical-align:top;} th{background:#f2f2f2;font-size:12px;}
+    th.r,td.r{text-align:right;}
+    .tot{margin-left:auto;width:270px;} .tot div{display:flex;justify-content:space-between;padding:4px 0;} .tot .g{font-weight:bold;font-size:15px;border-top:2px solid #111;margin-top:4px;padding-top:8px;}
+    .wm{position:absolute;top:140px;left:0;right:0;text-align:center;font-size:70px;color:rgba(200,0,0,.15);transform:rotate(-18deg);font-weight:bold;pointer-events:none;}
+    .foot{margin-top:26px;font-size:11px;color:#666;border-top:1px solid #ccc;padding-top:8px;}
+    @media print{body{padding:0;}}
+  </style></head><body><div class="doc">${body}</div><script>window.onload=function(){setTimeout(function(){window.print()},350)}<\/script></body></html>`);
+  w.document.close();
+}
+function bizHead(label,rightHtml){
+  const n=SETTINGS.business_name||'Die Shop';
+  return `<div class="top"><div><h1>${esc(n)}</h1><div class="muted">${esc(SETTINGS.address||'')}${SETTINGS.phone?'<br>Phone: '+esc(SETTINGS.phone):''}${SETTINGS.gstin?'<br>GSTIN: '+esc(SETTINGS.gstin):''}</div></div><div class="r"><h2>${label}</h2>${rightHtml}</div></div>`;
+}
+function partyBlock(c){return `<div style="margin-bottom:6px;"><b>${esc(c?c.name:'')}</b>${c&&c.address?'<br>'+esc(c.address).replace(/\n/g,'<br>'):''}${c&&c.phone?'<br>Phone: '+esc(c.phone):''}${c&&c.gstin?'<br>GSTIN: '+esc(c.gstin):''}</div>`;}
+function printInvoice(id){
+  const i=INVOICES.find(x=>x.id===id); if(!i) return;
+  const c=CUSTOMERS.find(x=>x.id===i.customerId), paid=invPaid(i), due=invDue(i);
+  const rows=i.lines.map((l,k)=>`<tr><td>${k+1}</td><td>${esc(l.description)}</td><td class="r">${l.qty}</td><td class="r">${fmtMoney(l.amount)}</td></tr>`).join('');
+  const dtxt=i.discountAmount>0?(i.discountType==='percent'?`Discount (${i.discountValue}%)`:'Discount'):'';
+  printDoc('Invoice '+i.invoiceNo,`
+    ${i.status==='cancelled'?'<div class="wm">CANCELLED</div>':''}
+    ${bizHead(i.taxPercent>0?'TAX INVOICE':'INVOICE',`<div><b>${esc(i.invoiceNo)}</b></div><div class="muted">Date: ${fmtDate(i.date)}</div>`)}
+    <div class="muted" style="margin-bottom:2px;">Bill to</div>${partyBlock(c)}
+    <table><thead><tr><th>#</th><th>Description</th><th class="r">Qty</th><th class="r">Amount</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="tot">
+      <div><span>Subtotal</span><span>${fmtMoney(i.subtotal)}</span></div>
+      ${dtxt?`<div><span>${dtxt}</span><span>- ${fmtMoney(i.discountAmount)}</span></div>`:''}
+      ${i.taxAmount>0?`<div><span>Tax (${i.taxPercent}%)</span><span>${fmtMoney(i.taxAmount)}</span></div>`:''}
+      <div class="g"><span>Total</span><span>${fmtMoney(i.total)}</span></div>
+      ${i.status==='issued'?`<div><span>Received</span><span>${fmtMoney(paid)}</span></div><div><span><b>Balance due</b></span><span><b>${fmtMoney(due)}</b></span></div>`:''}
+    </div>
+    ${i.notes?`<div style="margin-top:12px;"><b>Notes:</b> ${esc(i.notes)}</div>`:''}
+    <div class="foot">Computer generated invoice. Thank you for your business.</div>`);
+}
+function printReceipt(pid){
+  const p=PAYMENTS.find(x=>x.id===pid); if(!p) return;
+  const c=CUSTOMERS.find(x=>x.id===p.customerId), inv=INVOICES.find(x=>x.id===p.invoiceId);
+  printDoc('Receipt',`
+    ${bizHead('PAYMENT RECEIPT',`<div><b>RCPT-${esc(p.id.slice(0,6).toUpperCase())}</b></div><div class="muted">Date: ${fmtDate(p.date)}</div>`)}
+    <div class="muted" style="margin-bottom:2px;">Received from</div>${partyBlock(c)}
+    <table><tbody>
+      <tr><td>Amount received</td><td class="r"><b>${fmtMoney(p.amount)}</b></td></tr>
+      <tr><td>Mode</td><td class="r">${esc(p.mode||'')}</td></tr>
+      <tr><td>Against</td><td class="r">${inv?esc(inv.invoiceNo):'Advance / on account'}</td></tr>
+      ${inv?`<tr><td>Invoice balance now</td><td class="r">${fmtMoney(invDue(inv))}</td></tr>`:''}
+      ${c?`<tr><td>Party outstanding now</td><td class="r">${fmtMoney(partyBalance(c))}</td></tr>`:''}
+    </tbody></table>
+    ${p.notes?`<div><b>Notes:</b> ${esc(p.notes)}</div>`:''}
+    <div class="foot">Thank you. This is a computer generated receipt.</div>`);
+}
+function printStatement(cid){
+  const c=CUSTOMERS.find(x=>x.id===cid); if(!c) return;
+  const rows=ledgerEntries(c).map(r=>`<tr><td>${fmtDate(r.date)}</td><td>${esc(r.label)}</td><td class="r">${r.debit?fmtMoney(r.debit):''}</td><td class="r">${r.credit?fmtMoney(r.credit):''}</td><td class="r">${fmtMoney(r.balance)}</td></tr>`).join('');
+  printDoc('Statement '+c.name,`
+    ${bizHead('CUSTOMER STATEMENT',`<div class="muted">As on ${fmtDate(todayISO())}</div>`)}
+    ${partyBlock(c)}
+    <table><thead><tr><th>Date</th><th>Particulars</th><th class="r">Bill</th><th class="r">Received</th><th class="r">Balance</th></tr></thead><tbody>
+      <tr><td></td><td>Opening balance</td><td class="r"></td><td class="r"></td><td class="r">${fmtMoney(c.openingBalance)}</td></tr>${rows}</tbody></table>
+    <div class="tot"><div class="g"><span>${partyBalance(c)>=0?'Outstanding':'Advance'}</span><span>${fmtMoney(Math.abs(partyBalance(c)))}</span></div></div>
+    <div class="foot">Positive balance means amount due from the party.</div>`);
+}
+
+/* ----- Invoices list ----- */
+let invSearch='', invFilter='';
+function renderInvoices(){
+  const el=document.getElementById('sec-invoices');
+  if(!READY){el.innerHTML=loadingBlock();return;}
+  const q=invSearch.toLowerCase();
+  const list=INVOICES.filter(i=>(!invFilter||invState(i).l===invFilter)&&(!q||(i.invoiceNo+' '+partyName(i.customerId)).toLowerCase().includes(q)))
+    .sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''));
+  const live=INVOICES.filter(i=>i.status==='issued');
+  const totBilled=live.reduce((s,i)=>s+i.total,0), totDue=live.reduce((s,i)=>s+Math.max(0,invDue(i)),0);
+  el.innerHTML=`
+    <div class="section-head">
+      <div><div class="section-title">Invoices</div><div class="section-sub">${live.length} invoice${live.length===1?'':'s'} · billed ${fmtMoney(totBilled)} · invoice baaki ${fmtMoney(totDue)}</div></div>
+      <button class="btn btn-primary" onclick="openInvoiceForm()">${ICON.plus} New Invoice</button>
+    </div>
+    <div class="toolbar">
+      <select class="filter-select" onchange="invFilter=this.value;renderInvoices()"><option value="">Sab</option>${['Unpaid','Partial','Paid','Cancelled'].map(s=>`<option ${invFilter===s?'selected':''}>${s}</option>`).join('')}</select>
+      <input class="search-input" id="invSearchInput" placeholder="Invoice no, party..." value="${esc(invSearch)}" oninput="invSearch=this.value;rr(renderInvoices)">
+    </div>
+    <div class="data-list" id="invList"></div>`;
+  const listEl=document.getElementById('invList');
+  if(!list.length){
+    listEl.innerHTML=`<div class="empty-state">${ICON.box}<div class="et">${INVOICES.length?'Koi invoice nahi mili':'Abhi koi invoice nahi'}</div><div class="es">${INVOICES.length?'Dusra search ya filter try karein.':'Jobs chunke invoice banao. Charges jobs se apne aap aate hain.'}</div>${!INVOICES.length?`<button class="btn btn-primary" onclick="openInvoiceForm()">${ICON.plus} New Invoice</button>`:''}</div>`;
+    return;
+  }
+  listEl.innerHTML=list.map(i=>{
+    const st=invState(i);
+    return `<div class="row-card">
+      <div class="row-top">
+        <div><div class="row-title">${esc(i.invoiceNo)} — ${esc(partyName(i.customerId))}</div><div class="row-sub">${fmtDate(i.date)} · ${i.lines.length} line${i.lines.length===1?'':'s'}</div></div>
+        <div style="display:flex;align-items:center;gap:6px;"><span class="plate ${st.c}">${st.l}</span>
+          <div class="row-actions"><button class="icon-btn" aria-label="Open invoice" onclick="openInvoiceView('${i.id}')">${ICON.edit}</button></div></div>
+      </div>
+      <div class="row-meta"><span><b>Total:</b> ${fmtMoney(i.total)}</span>${i.status==='issued'?`<span><b>Mila:</b> ${fmtMoney(invPaid(i))}</span><span class="${invDue(i)>0?'overdue':''}"><b>Baaki:</b> ${fmtMoney(invDue(i))}</span>`:''}</div>
+      <div class="team-actions"><button class="btn btn-ghost btn-sm" onclick="openInvoiceView('${i.id}')">Dekho / Print</button>${i.status==='issued'&&invDue(i)>0?`<button class="btn btn-ghost btn-sm" onclick="payInvoice('${i.id}')">Payment lo</button>`:''}</div>
+    </div>`;
+  }).join('');
+}
+function payInvoice(id){const i=INVOICES.find(x=>x.id===id); if(!i) return; closeModal(); openPaymentForm(null,{customerId:i.customerId,invoiceId:id,amount:invDue(i)});}
+function openInvoiceView(id){
+  const i=INVOICES.find(x=>x.id===id); if(!i) return;
+  const st=invState(i), pays=PAYMENTS.filter(p=>p.invoiceId===id);
+  document.getElementById('modalTitle').textContent=i.invoiceNo;
+  document.getElementById('modalBody').innerHTML=`
+    <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;"><div><div class="row-title">${esc(partyName(i.customerId))}</div><div class="row-sub">${fmtDate(i.date)}</div></div><span class="plate ${st.c}">${st.l}</span></div>
+    <ul class="mini-list">${i.lines.map(l=>`<li><span class="mtitle">${esc(l.description)}</span><span class="msub">${fmtMoney(l.amount)}</span></li>`).join('')}</ul>
+    <div class="row-meta" style="flex-direction:column;gap:3px;">
+      <span><b>Subtotal:</b> ${fmtMoney(i.subtotal)}</span>
+      ${i.discountAmount>0?`<span><b>Discount${i.discountType==='percent'?' ('+i.discountValue+'%)':''}:</b> - ${fmtMoney(i.discountAmount)}</span>`:''}
+      ${i.taxAmount>0?`<span><b>Tax (${i.taxPercent}%):</b> ${fmtMoney(i.taxAmount)}</span>`:''}
+      <span><b>Total:</b> ${fmtMoney(i.total)}</span>
+      ${i.status==='issued'?`<span><b>Mila:</b> ${fmtMoney(invPaid(i))} · <b>Baaki:</b> ${fmtMoney(invDue(i))}</span>`:''}
+    </div>
+    ${pays.length?`<div class="group-label" style="margin:0;">Payments</div><ul class="mini-list">${pays.map(p=>`<li><span class="mtitle">${fmtDate(p.date)} · ${esc(p.mode||'')}</span><span class="msub">${fmtMoney(p.amount)}</span></li>`).join('')}</ul>`:''}
+    ${i.notes?`<div class="row-sub">${esc(i.notes)}</div>`:''}
+    <div class="acct-actions">
+      <button class="btn btn-primary" onclick="printInvoice('${i.id}')">Print / PDF</button>
+      ${i.status==='issued'&&invDue(i)>0?`<button class="btn btn-ghost" onclick="payInvoice('${i.id}')">Payment lo</button>`:''}
+      ${i.status==='issued'?`<button class="btn btn-danger" onclick="cancelInvoice('${i.id}')">Invoice cancel karo</button>`:''}
+    </div>`;
+  openModal();
+  document.getElementById('modalSaveBtn').style.display='none';
+}
+async function cancelInvoice(id){
+  const i=INVOICES.find(x=>x.id===id); if(!i) return;
+  if(!confirm(i.invoiceNo+' cancel karein? Jobs dobara bill ho sakengi aur is invoice ki payments "advance" ban jayengi.')) return;
+  const {error}=await sb.rpc('dieshop_cancel_invoice',{p_id:id});
+  if(error){showToast(error.message,true);return;}
+  await Promise.all([fetchJobs(),fetchInvoices(),fetchCol('payments')]); closeModal(); renderAll(); showToast('Invoice cancel ho gayi.');
+}
+
+/* ----- New invoice from jobs ----- */
+function openInvoiceForm(){
+  if(!CUSTOMERS.length){showToast('Pehle ek party jodo (Parties tab).',true);return;}
+  document.getElementById('modalTitle').textContent='New Invoice';
+  document.getElementById('modalBody').innerHTML=`
+    <div class="field"><label for="f_customerId">Party *</label><select id="f_customerId" onchange="invPartyChanged()">${CUSTOMERS.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
+    <div class="field"><label for="f_date">Invoice date</label><input id="f_date" type="date" value="${todayISO()}"></div>
+    <div><div class="group-label" style="margin:0 0 6px;">Jobs (jo abhi bill nahi hui)</div><div id="invJobs"></div></div>
+    <div class="field-row">
+      <div class="field"><label for="f_dtype">Discount type</label><select id="f_dtype" onchange="invPreview()"><option value="percent">Percent (%)</option><option value="amount">Amount (₹)</option></select></div>
+      <div class="field"><label for="f_dvalue">Discount</label><input id="f_dvalue" type="number" inputmode="decimal" min="0" step="any" value="0" oninput="invPreview()"></div>
+    </div>
+    <div class="field"><label for="f_tax">Tax / GST % (0 = koi tax nahi)</label><input id="f_tax" type="number" inputmode="decimal" min="0" max="100" step="any" value="${esc(SETTINGS.default_tax||'0')}" oninput="invPreview()"></div>
+    <div class="field"><label for="f_notes">Notes</label><textarea id="f_notes"></textarea></div>
+    <div class="card" id="invSummary"></div>`;
+  document.getElementById('modalSaveBtn').onclick=saveInvoice;
+  openModal(); invPartyChanged();
+}
+function invPartyChanged(){
+  const pid=document.getElementById('f_customerId').value, c=CUSTOMERS.find(x=>x.id===pid);
+  if(c){document.getElementById('f_dtype').value=c.discountType||'percent';document.getElementById('f_dvalue').value=c.discountValue||0;}
+  const jobs=JOBS.filter(j=>j.customerId===pid&&!j.invoiceId&&jobTotals(j).all>0).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  document.getElementById('invJobs').innerHTML=jobs.length?jobs.map(j=>`<label class="checkline" style="padding:6px 0;"><input type="checkbox" class="invjob" value="${j.id}" checked onchange="invPreview()"><span><b>${esc(j.jobNo)}</b> · ${fmtDateShort(j.date)} · ${esc(j.status)} · ${fmtMoney(jobTotals(j).all)}</span></label>`).join(''):`<div class="empty-mini">Is party ki koi bina-bill job nahi (ya unme charges nahi hain).</div>`;
+  invPreview();
+}
+function invSelected(){return [...document.querySelectorAll('.invjob:checked')].map(x=>x.value);}
+function invPreview(){
+  const ids=invSelected(), sub=r2(JOBS.filter(j=>ids.includes(j.id)).reduce((s,j)=>s+jobTotals(j).all,0));
+  const t=calcInv(sub,document.getElementById('f_dtype').value,Number(document.getElementById('f_dvalue').value)||0,Number(document.getElementById('f_tax').value)||0);
+  document.getElementById('invSummary').innerHTML=`<div class="row-meta" style="flex-direction:column;gap:3px;margin:0;"><span><b>Subtotal:</b> ${fmtMoney(sub)}</span><span><b>Discount:</b> - ${fmtMoney(t.disc)}</span><span><b>Tax:</b> ${fmtMoney(t.taxAmt)}</span><span style="font-size:15px;"><b>Total: ${fmtMoney(t.total)}</b></span></div>`;
+}
+async function saveInvoice(){
+  const pid=document.getElementById('f_customerId').value, ids=invSelected();
+  if(!ids.length){showToast('Kam se kam ek job chuno.',true);return;}
+  const dv=Number(document.getElementById('f_dvalue').value)||0, dt=document.getElementById('f_dtype').value, tx=Number(document.getElementById('f_tax').value)||0;
+  if(dv<0||tx<0||tx>100||(dt==='percent'&&dv>100)){showToast('Discount ya tax galat hai.',true);return;}
+  const btn=document.getElementById('modalSaveBtn'); btn.disabled=true; btn.textContent='Ban rahi hai…';
+  try{
+    const {data,error}=await sb.rpc('dieshop_create_invoice',{p:{party_id:pid,job_ids:ids,invoice_date:document.getElementById('f_date').value||todayISO(),discount_type:dt,discount_value:dv,tax_percent:tx,notes:document.getElementById('f_notes').value.trim()}});
+    if(error) throw error;
+    await Promise.all([fetchJobs(),fetchInvoices()]); renderAll(); showToast('Invoice ban gayi.'); openInvoiceView(data);
+  }catch(e){ showToast((e&&e.message)||'Invoice nahi bani. Internet check karein.',true); }
+  finally{ btn.disabled=false; btn.textContent='Save'; }
+}
+
+/* ----- Business details (owner) ----- */
+function openBusinessForm(){
+  document.getElementById('modalTitle').textContent='Business details';
+  document.getElementById('modalBody').innerHTML=`
+    <div class="field"><label for="b_name">Business naam (invoice par)</label><input id="b_name" value="${esc(SETTINGS.business_name||'')}" placeholder="e.g. Die Shop"></div>
+    <div class="field"><label for="b_addr">Address</label><textarea id="b_addr">${esc(SETTINGS.address||'')}</textarea></div>
+    <div class="field-row">
+      <div class="field"><label for="b_phone">Phone</label><input id="b_phone" value="${esc(SETTINGS.phone||'')}"></div>
+      <div class="field"><label for="b_gstin">GSTIN (optional)</label><input id="b_gstin" value="${esc(SETTINGS.gstin||'')}" autocapitalize="characters"></div>
+    </div>
+    <div class="field"><label for="b_tax">Default tax % (0 = tax nahi)</label><input id="b_tax" type="number" inputmode="decimal" min="0" max="100" step="any" value="${esc(SETTINGS.default_tax||'0')}"></div>`;
+  openModal();
+  document.getElementById('modalSaveBtn').onclick=async()=>{
+    const tax=Number(document.getElementById('b_tax').value)||0;
+    if(tax<0||tax>100){showToast('Tax 0 se 100 ke beech ho.',true);return;}
+    const rows=[['business_name','b_name'],['address','b_addr'],['phone','b_phone'],['gstin','b_gstin']].map(([k,id])=>({key:k,value:document.getElementById(id).value.trim(),updated_at:new Date().toISOString()}));
+    rows.push({key:'default_tax',value:String(tax),updated_at:new Date().toISOString()});
+    const {error}=await sb.from('dieshop_settings').upsert(rows,{onConflict:'key'});
+    if(error){showToast(error.message,true);return;}
+    await fetchSettings(); closeModal(); showToast('Business details save ho gayi.');
+  };
+}
+
 /* ===================== MODAL ===================== */
 function openModal(){document.getElementById('modalSaveBtn').style.display='';document.getElementById('overlay').classList.add('open');document.body.style.overflow='hidden';}
 function closeModal(){document.getElementById('overlay').classList.remove('open');document.body.style.overflow='';}
@@ -1952,7 +2218,7 @@ function renderTeam(){
   el.innerHTML=`
     <div class="section-head">
       <div><div class="section-title">Team</div><div class="section-sub">${TEAM.length} login${TEAM.length===1?'':'s'}</div></div>
-      <button class="btn btn-primary" onclick="openWorkerForm()">${ICON.plus} Add Worker</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn btn-ghost" onclick="openBusinessForm()">Business details</button><button class="btn btn-primary" onclick="openWorkerForm()">${ICON.plus} Add Worker</button></div>
     </div>
     <div class="data-list">${TEAM.map(t=>{
       const self=ME&&t.user_id===ME.user_id;
