@@ -2250,6 +2250,8 @@ function repSections(R){
     {t:'Pending production (abhi)',head:['Job','Party','Date','Status'],rows:R.pendingJobs.map(j=>[j.jobNo,partyName(j.customerId),fmtDate(j.date),j.status]),right:[]}
   ];
 }
+function hisabItems(R){const out=[];R.jobs.forEach(j=>j.items.forEach(it=>{out.push({jobNo:j.jobNo,party:partyName(j.customerId),design:it.designName,size:it.dieSize,qty:it.qty,price:(Number(it.designingCharge)||0)+(Number(it.cuttingCharge)||0)+(Number(it.otherCharge)||0),path:(it.images[0]||{}).path||''});}));return out;}
+function hisabSummary(R){const kaam=R.T.total,mila=R.collected,kharcha=R.expTotal;return {kaam,mila,kharcha,baaki:r2(kaam-mila),bachat:r2(mila-kharcha)};}
 function renderReports(){
   const el=document.getElementById('sec-reports');
   if(!READY){el.innerHTML=loadingBlock();return;}
@@ -2266,12 +2268,18 @@ function renderReports(){
       <div class="stat-plate"><div class="num">${fmtMoney(R.collected)}</div><div class="lbl">Collection</div></div>
       <div class="stat-plate"><div class="num">${fmtMoney(R.expTotal)}</div><div class="lbl">Expenses</div></div>
     </div>
+    ${(()=>{const hs=hisabSummary(R),it=hisabItems(R);return `<div class="card" style="margin-bottom:12px;"><h3>Aaj ka hisaab</h3>
+      <div class="row-meta" style="flex-direction:column;gap:4px;margin:0 0 10px;"><span><b>Total kaam:</b> ${fmtMoney(hs.kaam)}</span><span><b>Paisa aaya:</b> ${fmtMoney(hs.mila)}</span><span><b>Kharcha:</b> ${fmtMoney(hs.kharcha)}</span><span><b>Kaam ka baaki (kaam − mila):</b> ${fmtMoney(hs.baaki)}</span><span><b>Bachat (mila − kharcha):</b> ${fmtMoney(hs.bachat)}</span><span><b>Parties ka total baaki:</b> ${fmtMoney(R.pendingTotal)}</span></div>
+      ${it.length?it.map(x=>`<div class="row-card" style="display:flex;gap:10px;align-items:center;">${x.path?`<img class="thumb" data-path="${esc(x.path)}" alt="">`:''}<div style="min-width:0;flex:1;"><div class="row-title">${esc(x.design)}${x.size?' · '+esc(x.size):''}</div><div class="row-sub">${esc(x.party)} · ${esc(x.jobNo)} · ${x.qty} pcs</div></div><span class="plate steel">${fmtMoney(x.price)}</span></div>`).join(''):'<div class="empty-mini">Aaj koi die nahi kati.</div>'}</div>`;})()}
     ${S.slice(1).map(s=>`<div class="card" style="margin-bottom:12px;overflow-x:auto;"><h3>${esc(s.t)}</h3><div class="rep-t">${repTable(s.head,s.rows,s.right)}</div></div>`).join('')}`;
 }
-function printReport(){
-  const R=dayReport(repDate), S=repSections(R);
+async function printReport(){
+  const R=dayReport(repDate), S=repSections(R), hs=hisabSummary(R), hi=hisabItems(R);
+  try{await ensureUrls(hi.map(x=>x.path).filter(Boolean));}catch(e){}
+  const hisab=`<h2 style="margin-top:6px;">Aaj ka hisaab</h2><table><tr><td>Total kaam</td><td class="r"><b>${fmtMoney(hs.kaam)}</b></td></tr><tr><td>Paisa aaya</td><td class="r"><b>${fmtMoney(hs.mila)}</b></td></tr><tr><td>Kharcha</td><td class="r"><b>${fmtMoney(hs.kharcha)}</b></td></tr><tr><td>Kaam ka baaki</td><td class="r"><b>${fmtMoney(hs.baaki)}</b></td></tr><tr><td>Bachat (mila − kharcha)</td><td class="r"><b>${fmtMoney(hs.bachat)}</b></td></tr><tr><td>Parties ka total baaki</td><td class="r"><b>${fmtMoney(R.pendingTotal)}</b></td></tr></table>
+  <h2 style="margin-top:14px;">Aaj kati hui dies</h2><table><tr><th>Photo</th><th>Die / Party</th><th class="r">Price</th></tr>${hi.map(x=>{const c=x.path&&IMGURL[x.path];return `<tr><td style="width:84px;">${c?`<img src="${c.url}" style="width:76px;height:76px;object-fit:cover;border:1px solid #ccc;">`:''}</td><td><b>${esc(x.design)}</b>${x.size?' · '+esc(x.size):''}<br>${esc(x.party)} · ${esc(x.jobNo)} · ${x.qty} pcs</td><td class="r">${fmtMoney(x.price)}</td></tr>`;}).join('')||'<tr><td colspan="3" class="muted">Kuch nahi</td></tr>'}</table>`;
   const n=SETTINGS.business_name||'Die Shop';
-  printDoc('Daily Report '+repDate,`<div class="top"><div><h1>${esc(n)}</h1><div class="muted">Daily Report</div></div><div class="r"><h2>${fmtDate(repDate)}</h2></div></div>`+S.map(s=>`<h2 style="margin-top:14px;">${esc(s.t)}</h2>${repTable(s.head,s.rows,s.right)}`).join('')+`<div class="foot">Banaya: ${new Date().toLocaleString('en-IN')}</div>`);
+  printDoc('Daily Report '+repDate,`<div class="top"><div><h1>${esc(n)}</h1><div class="muted">Daily Report</div></div><div class="r"><h2>${fmtDate(repDate)}</h2></div></div>`+hisab+S.map(s=>`<h2 style="margin-top:14px;">${esc(s.t)}</h2>${repTable(s.head,s.rows,s.right)}`).join('')+`<div class="foot">Banaya: ${new Date().toLocaleString('en-IN')}</div>`);
 }
 function exportReportXlsx(){
   const R=dayReport(repDate), S=repSections(R);
