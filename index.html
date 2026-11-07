@@ -436,6 +436,7 @@ main{padding-top:22px;}
 @keyframes sheet{from{transform:translateY(40px);opacity:.6}to{transform:none;opacity:1}}
 @media (max-width:760px) and (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tab-btn.active{background:var(--accent-bg);color:var(--accent);box-shadow:none;} }
 </style>
+<style>.app-foot{max-width:1180px;margin:-70px auto 0;padding:0 16px 120px;text-align:center;font-size:11.5px;color:var(--ink-faint);font-weight:600;}body:not(.authed) .app-foot{display:none;}@media(min-width:761px){.app-foot{margin-top:-60px;padding-bottom:40px;}}</style>
 </head>
 <body>
 <div id="login">
@@ -486,6 +487,7 @@ main{padding-top:22px;}
   <section class="section" id="sec-maintenance"></section>
   <section class="section" id="sec-team"></section>
 </main>
+<footer class="app-foot">DieTrack · Ye system 07 Nov 2026 (aaj ki date) se shuru hua hai.</footer>
 
 <div class="overlay" id="overlay">
   <div class="modal">
@@ -2406,18 +2408,18 @@ async function printReport(){
   const hisab=`<h2 style="margin-top:6px;">Aaj ka hisaab</h2><table><tr><td>Total kaam</td><td class="r"><b>${fmtMoney(hs.kaam)}</b></td></tr><tr><td>Paisa aaya</td><td class="r"><b>${fmtMoney(hs.mila)}</b></td></tr><tr><td>Kharcha</td><td class="r"><b>${fmtMoney(hs.kharcha)}</b></td></tr><tr><td>Kaam ka baaki</td><td class="r"><b>${fmtMoney(hs.baaki)}</b></td></tr><tr><td>Bachat (mila − kharcha)</td><td class="r"><b>${fmtMoney(hs.bachat)}</b></td></tr><tr><td>Parties ka total baaki</td><td class="r"><b>${fmtMoney(R.pendingTotal)}</b></td></tr></table>
   <h2 style="margin-top:14px;">Aaj kati hui dies</h2><table><tr><th>Photo</th><th>Die / Party</th><th class="r">Price</th></tr>${hi.map(x=>{const c=x.path&&IMGURL[x.path];return `<tr><td style="width:84px;">${c?`<img src="${c.url}" style="width:76px;height:76px;object-fit:cover;border:1px solid #ccc;">`:''}</td><td><b>${esc(x.design)}</b>${x.size?' · '+esc(x.size):''}<br>${esc(x.party)} · ${esc(x.jobNo)} · ${x.qty} pcs</td><td class="r">${fmtMoney(x.price)}</td></tr>`;}).join('')||'<tr><td colspan="3" class="muted">Kuch nahi</td></tr>'}</table>`;
   const n=SETTINGS.business_name||'Die Shop';
-  printDoc('Daily Report '+repDate,`<div class="top"><div><h1>${esc(n)}</h1><div class="muted">Daily Report</div></div><div class="r"><h2>${fmtDate(repDate)}</h2></div></div>`+hisab+S.map(s=>`<h2 style="margin-top:14px;">${esc(s.t)}</h2>${repTable(s.head,s.rows,s.right)}`).join('')+`<div class="foot">Banaya: ${new Date().toLocaleString('en-IN')}</div>`);
+  printDoc('DieShop Daily Report '+fmtDate(repDate).replace(/ /g,'-'),`<div class="top"><div><h1>${esc(n)}</h1><div class="muted">Daily Report</div></div><div class="r"><h2>${fmtDate(repDate)}</h2></div></div>`+hisab+S.map(s=>`<h2 style="margin-top:14px;">${esc(s.t)}</h2>${repTable(s.head,s.rows,s.right)}`).join('')+`<div class="foot">Report date: ${fmtDate(repDate)} · Banaya: ${new Date().toLocaleString('en-IN')}<br>Ye system 07 Nov 2026 se shuru hua hai.</div>`);
 }
 function exportReportXlsx(){
   const R=dayReport(repDate), S=repSections(R);
   const strip=v=>typeof v==='string'?v:v;
   if(typeof XLSX==='undefined'){
     const csv='﻿'+S.map(s=>s.t+'\n'+[s.head,...s.rows].map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n')).join('\n\n');
-    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='daily-report-'+repDate+'.csv';a.click();showToast('Excel library load nahi hui, CSV bani.',true);return;
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='DieShop-Daily-Report-'+fmtDate(repDate).replace(/ /g,'-')+'.csv';a.click();showToast('Excel library load nahi hui, CSV bani.',true);return;
   }
   const wb=XLSX.utils.book_new();
   S.forEach(s=>{const ws=XLSX.utils.aoa_to_sheet([s.head,...s.rows.map(r=>r.map(strip))]);ws['!cols']=s.head.map(()=>({wch:22}));XLSX.utils.book_append_sheet(wb,ws,s.t.replace(/[^A-Za-z0-9 -]/g,'').slice(0,31));});
-  XLSX.writeFile(wb,'daily-report-'+repDate+'.xlsx');
+  XLSX.writeFile(wb,'DieShop-Daily-Report-'+fmtDate(repDate).replace(/ /g,'-')+'.xlsx');
 }
 
 /* ===================== EXPENSES, CAPITAL, PARTNERSHIP ===================== */
